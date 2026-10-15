@@ -14,6 +14,55 @@ public sealed class BridgeModelsTests
     };
 
     [Fact]
+    public void QqGroupList_应能解析群列表真实响应()
+    {
+        // 取自桥接 GET /api/qq/groups 的真实结构（注意是 id/name，不是 groupId/groupName）。
+        const string json = """
+        {
+          "ok": true,
+          "groups": [
+            { "id": "1056515304", "name": "魅魔饭店" },
+            { "id": "415520021", "name": "TUTE幻想乡东方project同好会" },
+            { "id": "1103374910", "name": "云汀柔045c" }
+          ]
+        }
+        """;
+
+        var response = JsonSerializer.Deserialize<QqGroupList>(json, Options);
+
+        Assert.NotNull(response);
+        Assert.Equal(3, response!.Groups.Count);
+        Assert.Equal("1056515304", response.Groups[0].Id);
+        Assert.Equal("魅魔饭店", response.Groups[0].Name);
+        Assert.Equal("TUTE幻想乡东方project同好会", response.Groups[1].Name);
+    }
+
+    [Fact]
+    public void QqGroupList_群列表为空时不应抛错()
+    {
+        // 账号未登录时桥接会返回 ok=false 且带 error，界面必须能安全处理这种"没有数据"的情况。
+        const string json = """{ "ok": false, "groups": [], "error": "fetch failed" }""";
+
+        var response = JsonSerializer.Deserialize<QqGroupList>(json, Options);
+
+        Assert.NotNull(response);
+        Assert.Empty(response!.Groups);
+    }
+
+    [Fact]
+    public void 群列表项_Display应同时包含群名与群号()
+    {
+        // 白名单页的 ListBox 是 DisplayMemberPath="Display"，而列表里存放的是
+        // BridgeConsoleView.GroupItem（不是数据模型 QqGroup）。
+        // 这里钉住那个类型确实提供了 Display —— 它若缺失，绑定会静默失败，
+        // 界面表现是每一项都渲染成空白行，而不是报错。
+        var item = new DSQQ.Views.BridgeConsoleView.GroupItem("1056515304", "魅魔饭店");
+
+        Assert.Contains("魅魔饭店", item.Display, StringComparison.Ordinal);
+        Assert.Contains("1056515304", item.Display, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RoleListResponse_应能解析真实响应形状()
     {
         // 取自桥接 /api/roles 的真实结构。

@@ -115,6 +115,7 @@ public sealed class QqGroupList
 public sealed class QqGroup
 {
     // 群号。
+    // 注意：桥接返回的字段名是 id / name，不是 groupId / groupName。
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 

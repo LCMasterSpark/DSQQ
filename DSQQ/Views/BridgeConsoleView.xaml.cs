@@ -72,12 +72,16 @@ public partial class BridgeConsoleView : UserControl
         Loaded += async (_, _) => await ReloadAsync();
     }
 
-    // 群列表项：包一层是为了给多选状态与显示文本留位置。
+    // 群列表项。
     // 参数 Id：群号。
     // 参数 Name：群名。
+    //
+    // 白名单页的 ListBox 是 DisplayMemberPath="Display"，而 _groups 里存放的就是本类型，
+    // 所以显示文本必须由**这里**提供 —— 放到数据模型 QqGroup 上不会生效，
+    // 而绑定失败时 WPF 不报错，只把每一项渲染成空白行。
     public sealed record GroupItem(string Id, string Name)
     {
-        // 界面显示文本。
+        // 界面显示文本：群名 + 群号（群号用于核对，同名群也能区分）。
         public string Display => $"{Name}（{Id}）";
     }
 
