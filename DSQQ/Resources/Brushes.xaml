@@ -1,0 +1,30 @@
+<!--
+    DSQQ 自定义画刷（Metro 风格的语义色板）
+    ─────────────────────────────────────────────────────────────
+    为什么自己定义而不直接用 MahApps 的 Gray1..Gray10：
+    那些键在不同版本间发生过增删，且语义是"灰阶编号"而非"用途"。
+    这里按**用途**命名（表面/文字/状态色），好处是：
+      · 换主题时只改这一个文件；
+      · XAML 里读起来是 DsqqStatusOnline 而不是 Gray10，意图明确；
+      · 不依赖第三方包的内部资源键，升级不易碎。
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ── 表面与文字 ── -->
+    <SolidColorBrush x:Key="DsqqSurface" Color="#F5F6F8" />
+    <SolidColorBrush x:Key="DsqqSurfaceAlt" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="DsqqBorderSoft" Color="#E2E5EA" />
+    <SolidColorBrush x:Key="DsqqTextPrimary" Color="#1B1F24" />
+    <SolidColorBrush x:Key="DsqqTextSecondary" Color="#6B7280" />
+    <SolidColorBrush x:Key="DsqqTextMuted" Color="#9CA3AF" />
+
+    <!-- ── 状态指示（三态统一取值，避免各处颜色不一致）── -->
+    <SolidColorBrush x:Key="DsqqStatusOnline" Color="#107C41" />
+    <SolidColorBrush x:Key="DsqqStatusDegraded" Color="#E0A030" />
+    <SolidColorBrush x:Key="DsqqStatusOffline" Color="#B0B0B0" />
+
+    <!-- ── 强调色 ── -->
+    <SolidColorBrush x:Key="DsqqAccent" Color="#0A84FF" />
+
+</ResourceDictionary>

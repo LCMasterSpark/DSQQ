@@ -1,0 +1,161 @@
+<Window x:Class="DSQQ.MainWindow"
+                xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
+                mc:Ignorable="d"
+                Title="DSQQ —— QQ 桥接面板"
+                Height="720" Width="1100"
+                MinHeight="520" MinWidth="820"
+                WindowStartupLocation="CenterScreen"
+                Loaded="OnWindowLoaded"
+                Closing="OnWindowClosing">
+    <!--
+        P1 骨架：仅展示"运行总览"页与三个服务的连通性。
+        说明：Tab 内容会在后续阶段拆分为独立 UserControl（Views/），
+              本文件的布局届时只保留外壳。
+    -->
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ══ 顶部：标题与操作 ══ -->
+        <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,12">
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                <TextBlock Text="QQ 桥接面板"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <TextBlock x:Name="SubtitleText"
+                           Text="正在读取状态…"
+                           Margin="12,4,0,0"
+                           Opacity="0.6"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button x:Name="RefreshButton"
+                        Content="刷新"
+                        Width="88"
+                        Height="30"
+                        Margin="0,0,8,0"
+                        Click="OnRefreshClick" />
+                <Button x:Name="StartAllButton"
+                        Content="一键启动"
+                        Width="104"
+                        Height="30"
+                        Style="{StaticResource MahApps.Styles.Button.Flat}"
+                        IsEnabled="False"
+                        ToolTip="P1 阶段暂未实装，见 README 的阶段规划" />
+            </StackPanel>
+        </DockPanel>
+
+        <!-- ══ 中部：运行总览 ══ -->
+        <TabControl Grid.Row="1" x:Name="MainTabs">
+            <TabItem Header="运行总览">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 三个服务的连通性卡片 -->
+                    <UniformGrid Grid.Row="0" Rows="1" Columns="3" Margin="0,0,0,16">
+                        <!-- SnowLuma -->
+                        <Border Margin="0,0,8,0" Padding="14" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}"
+                                BorderThickness="0">
+                            <StackPanel>
+                                <TextBlock Text="SnowLuma" FontSize="13" Opacity="0.65" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Ellipse x:Name="SnowLumaDot" Width="11" Height="11"
+                                             Fill="#B0B0B0" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="SnowLumaStateText" Text="未检测"
+                                               Margin="8,0,0,0" FontSize="17" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock x:Name="SnowLumaDetailText" Text="—"
+                                           Margin="0,6,0,0" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- qq-bridge -->
+                        <Border Margin="4,0" Padding="14" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}"
+                                BorderThickness="0">
+                            <StackPanel>
+                                <TextBlock Text="qq-bridge" FontSize="13" Opacity="0.65" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Ellipse x:Name="BridgeDot" Width="11" Height="11"
+                                             Fill="#B0B0B0" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="BridgeStateText" Text="未检测"
+                                               Margin="8,0,0,0" FontSize="17" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock x:Name="BridgeDetailText" Text="—"
+                                           Margin="0,6,0,0" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- DSH -->
+                        <Border Margin="8,0,0,0" Padding="14" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}"
+                                BorderThickness="0">
+                            <StackPanel>
+                                <TextBlock Text="DSH" FontSize="13" Opacity="0.65" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Ellipse x:Name="DshDot" Width="11" Height="11"
+                                             Fill="#B0B0B0" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="DshStateText" Text="未检测"
+                                               Margin="8,0,0,0" FontSize="17" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock x:Name="DshDetailText" Text="—"
+                                           Margin="0,6,0,0" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <!-- 运行细节 -->
+                    <TextBlock Grid.Row="1" Text="运行细节" FontWeight="SemiBold" Margin="2,0,0,6" />
+                    <Border Grid.Row="2" Padding="14" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="DetailsText"
+                                       Text="等待首次状态采集…"
+                                       TextWrapping="Wrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI"
+                                       LineHeight="20" />
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="服务管理" IsEnabled="False">
+                <TextBlock Text="下一阶段实装：一键启动 / 停止 / 端口占用 / 进程树（见 README P2）"
+                           Margin="16" Opacity="0.6" />
+            </TabItem>
+            <TabItem Header="日志" IsEnabled="False">
+                <TextBlock Text="下一阶段实装：多文件跟随、级别过滤、关键字告警（见 README P3）"
+                           Margin="16" Opacity="0.6" />
+            </TabItem>
+            <TabItem Header="设置" IsEnabled="False">
+                <TextBlock Text="下一阶段实装：路径与端口配置、启动行为（见 README P2）"
+                           Margin="16" Opacity="0.6" />
+            </TabItem>
+        </TabControl>
+
+        <!-- ══ 底部：路径提示（排障第一现场）══ -->
+        <TextBlock x:Name="FooterText"
+                   Grid.Row="2"
+                   Margin="2,10,0,0"
+                   Opacity="0.55"
+                   TextTrimming="CharacterEllipsis"
+                   Text="—" />
+    </Grid>
+</Window>

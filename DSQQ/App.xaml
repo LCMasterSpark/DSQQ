@@ -1,0 +1,31 @@
+<Application x:Class="DSQQ.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:DSQQ"
+             StartupUri="MainWindow.xaml">
+    <!--
+        UI 风格：Metro（MahApps.Metro 2.4.11）
+        ─────────────────────────────────────────────────────────────
+        ⚠️ 资源路径必须严格照 MahApps 程序集内的真实条目写，否则启动即抛
+        XamlParseException「找不到资源」。实测（反射 MahApps.Metro.g.resources）真实路径是：
+
+            styles/controls.baml          控件基础样式
+            styles/fonts.baml             字体（FontIcon 等依赖）
+            styles/themes/light.blue.baml 浅色主题 + 蓝色强调
+
+        要点：**正斜杠、全小写、扩展名写成 .xaml**（WPF 编译成 .baml 后仍按原名寻址）。
+        曾经写成 `Styles/Theme.Light.Blue.xaml`（点分大小写混排）→ 直接启动崩溃。
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/styles/controls.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/styles/fonts.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/styles/themes/light.blue.xaml" />
+
+                <!-- 本程序自定义语义色板（最后合并，可覆盖上面的默认值） -->
+                <ResourceDictionary Source="Resources/Brushes.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
