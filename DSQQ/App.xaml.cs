@@ -103,12 +103,18 @@ public partial class App : Application
             }
         };
 
-        // 3) 未被 await 的 Task 抛错：健壮性问题的早期信号，标记已观察避免升级为崩溃。
+        // 3) 未被 await 的 Task 抛错。
+        // 注意：args.Exception 是 AggregateException，它的 Message 只是转述
+        // （例如"调用线程无法访问此对象"），真正的原因在 InnerException 里。
+        // 所以这里交给 TaskObserver 展开后再提示，否则排查时看不到任何调用栈。
         TaskScheduler.UnobservedTaskException += (_, args) =>
         {
-            ReportError("存在未被观察的任务异常", args.Exception);
+            TaskObserver.ReportUnobserved(args.Exception);
             args.SetObserved();
         };
+
+        // 由 TaskObserver 上报的"发射后不管"失败：提示一次，但不打断程序。
+        TaskObserver.UnobservedException += (_, ex) => ReportError("后台任务发生异常", ex);
     }
 
     // 统一错误上报（后续替换为应用日志 + 托盘通知，并改用 MahApps 的对话框）。

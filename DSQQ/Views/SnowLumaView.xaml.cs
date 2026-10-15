@@ -81,7 +81,10 @@ public partial class SnowLumaView : UserControl
     private void StartTimer()
     {
         _timer = new Timer(5000) { AutoReset = true };
-        _timer.Elapsed += async (_, _) => await Dispatcher.InvokeAsync(async () => await RefreshAsync());
+        // System.Timers.Timer 的回调在 ThreadPool 线程上执行，界面更新必须切回 UI 线程；
+        // 这里只做"调度"，任务本身的异常交给 TaskObserver 观察，避免 DispatcherOperation 吞掉异常。
+        _timer.Elapsed += (_, _) => Dispatcher.InvokeAsync(
+            () => TaskObserver.FireAndForget(RefreshAsync, "SnowLuma 页定时刷新"));
         _timer.Start();
     }
 

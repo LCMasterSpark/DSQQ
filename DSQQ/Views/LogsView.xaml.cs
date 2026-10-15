@@ -181,7 +181,7 @@ public partial class LogsView : UserControl
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
         _tailTasks[source] = cts;
 
-        _ = Task.Run(async () =>
+        TaskObserver.FireAndForget(async () =>
         {
             try
             {
@@ -229,7 +229,7 @@ public partial class LogsView : UserControl
                 await Dispatcher.InvokeAsync(() => StatusText.Text = $"读取失败：{ex.Message}")
                     .Task.ConfigureAwait(false);
             }
-        });
+        }, $"日志跟随：{source}");
     }
 
     // 命中告警关键字时通过托盘提示。

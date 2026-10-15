@@ -30,7 +30,7 @@ public partial class ServiceManagementView : UserControl
         Loaded += (_, _) =>
         {
             UpdateHint();
-            _ = RefreshPortsAsync();
+            TaskObserver.FireAndForget(RefreshPortsAsync, "服务管理页加载时刷新端口");
         };
     }
 

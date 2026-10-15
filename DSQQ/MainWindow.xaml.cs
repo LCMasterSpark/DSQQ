@@ -82,7 +82,7 @@ public partial class MainWindow : Window
         _ = RefreshAllAsync();
 
         var interval = TimeSpan.FromMilliseconds(Math.Max(500, CurrentConfig.Monitoring.PollIntervalMs));
-        _pollTimer = new Timer(_ => _ = RefreshAllAsync(), null, interval, interval);
+        _pollTimer = new Timer(_ => TaskObserver.FireAndForget(RefreshAllAsync, "主窗口状态轮询"), null, interval, interval);
 
         SubtitleText.Text = $"每 {interval.TotalSeconds:0.#} 秒自动刷新";
     }
