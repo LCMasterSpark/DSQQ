@@ -13,7 +13,13 @@
     <RootNamespace>DSQQ</RootNamespace>
     <AssemblyName>DSQQ</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x64</Platforms>
+    <!--
+      不要在这里声明 <Platforms>x64</Platforms>。
+      解决方案的默认平台是 Any CPU；项目若只声明 x64，VS 用 Debug|Any CPU 评估时找不到匹配组合，
+      会把该项目判为"不适用"，构建时直接跳过 —— 表现为"主程序 BD 不了、只有测试项目能 BD"。
+      命令行 dotnet build 自己解析目标框架与 RID，不受影响，因此容易把这个问题掩盖掉。
+      实际目标架构由下面两项决定，无需再限制平台枚举：
+    -->
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
