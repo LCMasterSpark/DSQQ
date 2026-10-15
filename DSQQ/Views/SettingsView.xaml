@@ -1,0 +1,129 @@
+<UserControl x:Class="DSQQ.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="640" d:DesignWidth="1000">
+    <!--
+        设置页（P2）
+        ─────────────────────────────────────────────────────────────
+        说明：
+        · 路径与端口是全部功能的入口，写错会直接导致"启动失败/日志看不到"，
+          因此每一项都配了实时校验提示（目录不存在时立刻标红）；
+        · 保存采用"全量写回 + 立即生效（重建编排器）"，避免局部更新带来的不一致；
+        · 合规相关开关（自动注入 SnowLuma 启动密码）单独标注，默认关闭。
+    -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="12">
+
+            <!-- ══ 路径与端口 ══ -->
+            <TextBlock Text="路径与端口" FontSize="15" FontWeight="SemiBold" />
+            <Border Margin="0,8,0,0" Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="190" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="SnowLuma 安装目录" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="0" Grid.Column="1" x:Name="SnowLumaDirBox" Margin="0,0,8,8" />
+                    <TextBlock Grid.Row="0" Grid.Column="2" x:Name="SnowLumaDirState" Width="70" VerticalAlignment="Center" Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="SnowLuma 启动脚本" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="1" Grid.Column="1" x:Name="SnowLumaLauncherBox" Margin="0,0,8,8" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="SnowLuma WebUI 端口" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="2" Grid.Column="1" x:Name="SnowLumaPortBox" Margin="0,0,8,8" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="qq-bridge 目录" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="3" Grid.Column="1" x:Name="BridgeDirBox" Margin="0,0,8,8" />
+                    <TextBlock Grid.Row="3" Grid.Column="2" x:Name="BridgeDirState" Width="70" VerticalAlignment="Center" Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="桥接控制台端口" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="4" Grid.Column="1" x:Name="BridgePortBox" Margin="0,0,8,8" />
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="桥接入口（相对路径）" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="5" Grid.Column="1" x:Name="BridgeEntryBox" Margin="0,0,8,8" />
+
+                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Node 可执行文件（可留空）" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="6" Grid.Column="1" x:Name="NodePathBox" Margin="0,0,8,8" />
+
+                    <TextBlock Grid.Row="7" Grid.Column="0" Text="DSH 端口" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBox   Grid.Row="7" Grid.Column="1" x:Name="DshPortBox" Margin="0,0,8,0" />
+                </Grid>
+            </Border>
+
+            <!-- ══ 启动行为 ══ -->
+            <TextBlock Text="启动行为" FontSize="15" FontWeight="SemiBold" Margin="0,16,0,0" />
+            <Border Margin="0,8,0,0" Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                <StackPanel>
+                    <CheckBox x:Name="LaunchSnowLumaCheck" Content="一键启动时启动 SnowLuma" Margin="0,2" />
+                    <CheckBox x:Name="LaunchBridgeCheck" Content="一键启动时启动 qq-bridge" Margin="0,2" />
+                    <CheckBox x:Name="MinimizeToTrayCheck" Content="关闭窗口时最小化到托盘（而不是退出）" Margin="0,2" />
+                    <CheckBox x:Name="AutoStartCheck" Content="程序启动后自动执行一次一键启动" Margin="0,2" />
+
+                    <CheckBox x:Name="InjectPasswordCheck" Margin="0,10,0,2"
+                              Content="启动 SnowLuma 时注入 WebUI 启动密码（环境变量方式）" />
+                    <TextBlock TextWrapping="Wrap" Opacity="0.65" Margin="22,0,0,0"
+                               Text="默认关闭。SnowLuma 的协议同意与扫码登录必须由你在其界面完成；此开关只影响「首次登录密码」的注入，用于密码丢失时免去手工设置环境变量的麻烦。请自行确认符合其 EULA。" />
+                    <TextBox x:Name="BootstrapPasswordBox" Margin="22,8,0,0" Width="320" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
+
+            <!-- ══ 监控 ══ -->
+            <TextBlock Text="监控与日志" FontSize="15" FontWeight="SemiBold" Margin="0,16,0,0" />
+            <Border Margin="0,8,0,0" Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="190" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="状态轮询间隔（毫秒）" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="0" Grid.Column="1" x:Name="PollIntervalBox" Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="日志初始加载行数" VerticalAlignment="Center" Margin="0,0,10,8" />
+                    <TextBox   Grid.Row="1" Grid.Column="1" x:Name="TailLinesBox" Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="告警关键字（每行一个）" VerticalAlignment="Top" Margin="0,4,10,0" />
+                    <TextBox   Grid.Row="2" Grid.Column="1" x:Name="AlertKeywordsBox"
+                               AcceptsReturn="True" MinHeight="72" VerticalScrollBarVisibility="Auto"
+                               FontFamily="Consolas, Microsoft YaHei UI" />
+                </Grid>
+            </Border>
+
+            <!-- ══ 操作 ══ -->
+            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                <Button x:Name="SaveButton" Content="保存设置" Width="120" Height="32"
+                        Style="{StaticResource MahApps.Styles.Button.Flat}"
+                        Click="OnSaveClick" />
+                <Button x:Name="ReloadButton" Content="放弃修改并重载" Width="150" Height="32" Margin="8,0,0,0"
+                        Click="OnReloadClick" />
+                <Button x:Name="OpenConfigFolderButton" Content="打开配置目录" Width="130" Height="32" Margin="8,0,0,0"
+                        Click="OnOpenConfigFolderClick" />
+            </StackPanel>
+
+            <TextBlock x:Name="StatusText" Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.7" />
+            <TextBlock x:Name="ConfigPathText" Margin="0,6,0,0" Opacity="0.5" TextWrapping="Wrap" />
+            <TextBlock Margin="0,4,0,16" Opacity="0.5" TextWrapping="Wrap"
+                       Text="提示：改动保存后立即生效（启动流程会使用新配置）。若桥接已在运行，改端口需要先停止再启动。" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

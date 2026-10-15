@@ -1,4 +1,7 @@
+using MessageBox = System.Windows.MessageBox;
+using Application = System.Windows.Application;
 using System.Windows;
+using DSQQ.Models;
 
 namespace DSQQ;
 
@@ -6,21 +9,92 @@ namespace DSQQ;
 /// 应用程序入口。
 /// </summary>
 /// <remarks>
-/// 现阶段（P1）职责：
-/// <list type="bullet">
+/// 职责：
+/// <list type="number">
 /// <item>集中兜住未处理异常 —— 本程序大量依赖"外部进程 + 本机端口 + 网络请求"，
 /// 任何一处偶发异常都不应该让整个面板消失；</item>
-/// <item>确定启动窗口（由 App.xaml 的 StartupUri 指定）。</item>
+/// <item>创建应用级服务宿主（<see cref="AppServices"/>）并暴露为静态属性，供各视图取用；</item>
+/// <item>管理托盘图标宿主（<see cref="TrayIconHost"/>）的生命周期。</item>
 /// </list>
-/// 依赖注入容器、托盘图标与"一键启动"编排将在后续阶段接入，此文件会随之扩展。
+/// 说明：这里用静态属性而非依赖注入容器，理由见 <see cref="AppServices"/> 的注释；
+/// 等后续阶段接入两个 API 客户端、依赖图变深后再切换。
 /// </remarks>
 public partial class App : Application
 {
+    /// <summary>应用级服务宿主（组合根）。</summary>
+    public static AppServices Services { get; private set; } = null!;
+
+    /// <summary>托盘图标宿主；初始化失败时为 <c>null</c>（托盘是增强功能，不影响主流程）。</summary>
+    public static TrayIconHost? Tray { get; private set; }
+
+    /// <summary>配置读取失败时的提示（首次启动无配置属正常情况）。</summary>
+    public static string? ConfigLoadError { get; private set; }
+
     /// <inheritdoc />
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         RegisterGlobalExceptionHandlers();
+
+        var config = AppServices.LoadOrDefault(out var error);
+        ConfigLoadError = error;
+        Services = new AppServices(config);
+    }
+
+    /// <summary>
+    /// 初始化托盘图标。由主窗口在 <c>Loaded</c> 时调用 —— 托盘回调需要引用主窗口，
+    /// 放在窗口就绪之后可避免"回调里窗口还不存在"的时序问题。
+    /// </summary>
+    /// <param name="showWindow">显示主窗口的动作。</param>
+    public static void InitializeTray(Action showWindow)
+    {
+        if (Tray is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            Tray = new TrayIconHost(
+                configAccessor: () => Services.Config,
+                showWindow: showWindow,
+                exitApplication: ExitApplication);
+
+            if (!Tray.Initialize())
+            {
+                Tray.Dispose();
+                Tray = null;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // 托盘不可用时继续以普通窗口运行。
+            Tray = null;
+        }
+    }
+
+    /// <summary>
+    /// 退出应用程序：先隐藏托盘图标，再关闭应用。
+    /// </summary>
+    /// <remarks>
+    /// 必须先让图标不可见：否则进程退出前会在托盘里留下一个"幽灵图标"，
+    /// 直到鼠标划过才消失。
+    /// </remarks>
+    public static void ExitApplication()
+    {
+        try
+        {
+            Tray?.Dispose();
+        }
+        catch (InvalidOperationException)
+        {
+            // 释放失败不应阻止退出。
+        }
+        finally
+        {
+            Tray = null;
+            Current?.Shutdown();
+        }
     }
 
     /// <summary>

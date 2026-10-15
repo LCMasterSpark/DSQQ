@@ -1,23 +1,24 @@
-using System.Diagnostics;
+using Color = System.Windows.Media.Color;
+using Brush = System.Windows.Media.Brush;
+using Timer = System.Threading.Timer;
 using System.IO;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using DSQQ.Models;
 using DSQQ.Services;
+using DSQQ.Views;
 
 namespace DSQQ;
 
 /// <summary>
-/// 主窗口（P1 骨架：运行总览）。
+/// 主窗口：运行总览、页面装载与托盘行为。
 /// </summary>
 /// <remarks>
-/// 当前阶段刻意保持"代码后台 + 少量直接赋值"的简单形态，先把**数据采集链路**跑通：
-/// 配置读取 → 端点解析 → 端口探测 → HTTP 状态采集 → 界面呈现。
-/// MVVM 分层、视图拆分与依赖注入会在 P2 引入（见 README 阶段规划），
-/// 届时本文件的采集逻辑会搬到 <c>Services</c> + <c>ViewModels</c>。
+/// 分层现状：本文件保留"状态采集 + 视图装配"的代码后台形态，采集结果直接写入控件。
+/// 等 P3（日志中心）与 P4/P5（两个 API 客户端）引入后，会把这些逻辑迁到 ViewModels 并改用数据绑定；
+/// 现在不提前抽象，是为了避免在需求尚未稳定时造出错误的抽象层。
 /// </remarks>
 public partial class MainWindow : Window
 {
@@ -27,58 +28,77 @@ public partial class MainWindow : Window
     private static readonly Brush OfflineBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0xB0, 0xB0));
     private static readonly Brush UnknownBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xA0, 0x30));
 
+    private readonly AppServices _services;
     private readonly HttpClient _http;
     private readonly CancellationTokenSource _shutdown = new();
 
-    private AppConfig _config = AppConfig.CreateDefault();
-    private ServiceEndpoints _endpoints;
     private Timer? _pollTimer;
     private bool _refreshing;
 
     /// <summary>
-    /// 初始化主窗口：加载配置、解析端点、准备 HTTP 客户端。
+    /// 初始化主窗口。
     /// </summary>
-    public MainWindow()
+    /// <param name="services">应用服务宿主；为 <c>null</c> 时回退到 <see cref="App.Services"/>
+    /// （设计器预览等场景下两者都可能为空，此时退化为默认配置，界面仍可打开）。</param>
+    public MainWindow(AppServices? services = null)
     {
         InitializeComponent();
 
-        // 配置读取失败不应阻止界面启动：退化为默认值并让状态页显示出来。
-        _config = AppConfigStore.TryLoad(out var loadError) ?? AppConfig.CreateDefault();
-        _endpoints = ServiceEndpoints.FromConfig(_config);
+        _services = services ?? App.Services ?? new AppServices(AppConfig.CreateDefault());
 
         _http = new HttpClient { Timeout = HttpTimeout };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("DSQQ/0.1 (+local panel)");
 
         UpdateFooter();
-        if (!string.IsNullOrEmpty(loadError))
+        if (!string.IsNullOrEmpty(App.ConfigLoadError))
         {
-            DetailsText.Text = $"⚠️ 配置文件读取失败，已使用默认值：{loadError}";
+            DetailsText.Text = $"⚠️ 配置文件读取失败，已使用默认值：{App.ConfigLoadError}";
         }
     }
 
+    /// <summary>当前配置（经宿主读取，保证与设置页保存后的新值一致）。</summary>
+    private AppConfig CurrentConfig => _services.Config;
+
+    /// <summary>当前端点。</summary>
+    private ServiceEndpoints CurrentEndpoints => _services.Endpoints;
+
     /// <summary>
-    /// 窗口加载完成后启动定时采集。
+    /// 窗口加载：装配子页面、初始化托盘、启动定时采集。
     /// </summary>
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
-        // 立即采集一次，避免界面空窗；随后固定间隔轮询。
+        // 两个页面在此注入依赖：各自持有所需服务，主窗口不中转数据。
+        ServiceTab.Content ??= new ServiceManagementView(_services);
+        SettingsTab.Content ??= new SettingsView(_services);
+
+        // 托盘回调需要引用窗口，因此放在窗口就绪之后。
+        App.InitializeTray(ShowFromTray);
+
         _ = RefreshAllAsync();
 
-        var interval = TimeSpan.FromMilliseconds(Math.Max(500, _config.Monitoring.PollIntervalMs));
+        var interval = TimeSpan.FromMilliseconds(Math.Max(500, CurrentConfig.Monitoring.PollIntervalMs));
         _pollTimer = new Timer(_ => _ = RefreshAllAsync(), null, interval, interval);
 
         SubtitleText.Text = $"每 {interval.TotalSeconds:0.#} 秒自动刷新";
     }
 
     /// <summary>
-    /// 窗口关闭时停止采集并释放资源。
+    /// 关闭窗口：按配置最小化到托盘，或在确认后真正退出。
     /// </summary>
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        if (App.Tray is not null && CurrentConfig.Startup.MinimizeToTrayOnClose)
+        {
+            // 这是"点关闭按钮"的常规路径；整体退出走 App.ExitApplication()，
+            // 那条路径会先释放托盘，因此不会被这里拦下。
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         _pollTimer?.Dispose();
         _pollTimer = null;
 
-        // 取消尚未完成的采集，避免关闭后仍有回调触碰已释放的界面元素。
         try
         {
             _shutdown.Cancel();
@@ -89,9 +109,33 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// 手动刷新。
-    /// </summary>
+    /// <summary>最小化到托盘。</summary>
+    private void OnHideToTrayClick(object sender, RoutedEventArgs e) => HideToTray();
+
+    /// <summary>隐藏窗口并给出一次性提示（避免用户以为程序被关掉了）。</summary>
+    private void HideToTray()
+    {
+        Hide();
+        App.Tray?.ShowBalloon("DSQQ 仍在运行", "已最小化到托盘：双击图标重新打开，右键菜单可退出。");
+    }
+
+    /// <summary>从托盘恢复窗口。</summary>
+    private void ShowFromTray()
+    {
+        // 托盘事件来自 WinForms 消息循环，不一定在 UI 线程上，统一切回 Dispatcher。
+        Dispatcher.Invoke(() =>
+        {
+            Show();
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Activate();
+        });
+    }
+
+    /// <summary>手动刷新。</summary>
     private async void OnRefreshClick(object sender, RoutedEventArgs e)
     {
         RefreshButton.IsEnabled = false;
@@ -109,7 +153,7 @@ public partial class MainWindow : Window
     /// 采集三个服务的状态并刷新界面。
     /// </summary>
     /// <remarks>
-    /// 用 <see cref="_refreshing"/> 做重入保护：轮询间隔短于一次采集耗时时，
+    /// 用 <c>_refreshing</c> 做重入保护：轮询间隔短于一次采集耗时时，
     /// 否则会出现并发采集与界面错乱。
     /// </remarks>
     private async Task RefreshAllAsync()
@@ -122,7 +166,6 @@ public partial class MainWindow : Window
         _refreshing = true;
         try
         {
-            // 三项互不依赖，并行探测；单项失败不影响其它两项。
             var snowLumaTask = ProbeSnowLumaAsync(_shutdown.Token);
             var bridgeTask = ProbeBridgeAsync(_shutdown.Token);
             var dshTask = ProbeDshAsync(_shutdown.Token);
@@ -140,10 +183,15 @@ public partial class MainWindow : Window
 
             BuildDetails(bridgeTask.Result);
             SubtitleText.Text = $"最后更新 {DateTime.Now:HH:mm:ss}";
+
+            // 托盘提示同步反映桥接状态，便于窗口最小化时判断服务是否在跑。
+            App.Tray?.UpdateTooltip(bridgeTask.Result.State == ProbeState.Offline
+                ? "DSQQ —— 桥接未运行"
+                : $"DSQQ —— 桥接{StateText(bridgeTask.Result.State)}");
         }
         catch (Exception ex)
         {
-            // 采集层的任何异常都只反映到界面，不向上抛（定时器回调里抛出会导致进程终止）。
+            // 采集层的任何异常都只反映到界面，不向上抛（定时器回调中抛出会导致进程终止）。
             SubtitleText.Text = $"采集失败：{ex.GetType().Name}";
         }
         finally
@@ -152,9 +200,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// 把单个服务的探测结果反映到界面。
-    /// </summary>
+    /// <summary>把单个服务的探测结果反映到界面。</summary>
     private static void ApplyResult(
         System.Windows.Shapes.Ellipse dot,
         System.Windows.Controls.TextBlock stateText,
@@ -168,32 +214,36 @@ public partial class MainWindow : Window
             _ => OfflineBrush,
         };
 
-        stateText.Text = result.State switch
-        {
-            ProbeState.Online => "在线",
-            ProbeState.Degraded => "异常",
-            _ => "离线",
-        };
-
+        stateText.Text = StateText(result.State);
         detailText.Text = result.Detail;
     }
 
-    /// <summary>探测 SnowLuma：WebUI 端口是否可连。</summary>
+    /// <summary>状态枚举的中文文案（界面与托盘共用，避免两处措辞漂移）。</summary>
+    private static string StateText(ProbeState state) => state switch
+    {
+        ProbeState.Online => "在线",
+        ProbeState.Degraded => "异常",
+        _ => "离线",
+    };
+
+    /// <summary>探测 SnowLuma：WebUI 端口是否可连（端口可能被顺延，故做区间探测）。</summary>
     private async Task<ProbeResult> ProbeSnowLumaAsync(CancellationToken token)
     {
+        var config = CurrentConfig;
+
         var probe = await PortProbe.FindOpenPortAsync(
-            _config.SnowLuma.PreferredWebUiPort,
-            _config.SnowLuma.PortProbeCount,
+            config.SnowLuma.PreferredWebUiPort,
+            config.SnowLuma.PortProbeCount,
             token).ConfigureAwait(false);
 
         if (probe is null)
         {
-            return new ProbeResult(ProbeState.Offline, $"未监听到 {_config.SnowLuma.PreferredWebUiPort} 起的可用端口");
+            return new ProbeResult(ProbeState.Offline, $"未监听到 {config.SnowLuma.PreferredWebUiPort} 起的可用端口");
         }
 
-        var suffix = probe.Value == _config.SnowLuma.PreferredWebUiPort
+        var suffix = probe.Value == config.SnowLuma.PreferredWebUiPort
             ? string.Empty
-            : $"（{_config.SnowLuma.PreferredWebUiPort} 被占用，实际 {probe.Value}）";
+            : $"（{config.SnowLuma.PreferredWebUiPort} 被占用，实际 {probe.Value}）";
 
         return new ProbeResult(ProbeState.Online, $"WebUI http://127.0.0.1:{probe.Value} {suffix}");
     }
@@ -201,18 +251,19 @@ public partial class MainWindow : Window
     /// <summary>探测 qq-bridge：控制台端口是否可连，并尽力取回运行状态。</summary>
     private async Task<ProbeResult> ProbeBridgeAsync(CancellationToken token)
     {
-        var open = await PortProbe.IsPortOpenAsync(_config.Bridge.ConsolePort, token).ConfigureAwait(false);
+        var config = CurrentConfig;
+
+        var open = await PortProbe.IsPortOpenAsync(config.Bridge.ConsolePort, token).ConfigureAwait(false);
         if (!open)
         {
-            return new ProbeResult(ProbeState.Offline, $"控制台端口 {_config.Bridge.ConsolePort} 未监听");
+            return new ProbeResult(ProbeState.Offline, $"控制台端口 {config.Bridge.ConsolePort} 未监听");
         }
 
-        var uri = new Uri(_endpoints.BridgeConsole, "/api/status");
+        var uri = new Uri(CurrentEndpoints.BridgeConsole, "/api/status");
         var json = await GetStringSafeAsync(uri, token).ConfigureAwait(false);
         if (string.IsNullOrEmpty(json))
         {
-            // 端口通但接口取不到：进程可能正在启动，或该端口被别的程序占用。
-            return new ProbeResult(ProbeState.Degraded, $":{_config.Bridge.ConsolePort} 已监听，但 /api/status 无响应");
+            return new ProbeResult(ProbeState.Degraded, $":{config.Bridge.ConsolePort} 已监听，但 /api/status 无响应");
         }
 
         try
@@ -222,7 +273,7 @@ public partial class MainWindow : Window
 
             var mode = GetString(root, "mode") ?? "?";
             var connected = GetBool(root, "snowluma", "connected");
-            var account = GetString(root, "snowluma", "account") ?? GetString(root, "snowluma", "self") ?? "—";
+            var account = GetString(root, "snowluma", "account") ?? "—";
             var good = GetBool(root, "snowluma", "good");
             var allowGroups = root.TryGetProperty("allowGroups", out var g) && g.ValueKind == JsonValueKind.Array
                 ? g.GetArrayLength()
@@ -231,14 +282,17 @@ public partial class MainWindow : Window
                 ? p.GetArrayLength()
                 : 0;
 
-            // 桥接把上游健康分为 connected（WS 通）与 good（真的收得到 QQ 数据），两者含义不同，
-            // 因此这里用 Degraded 表达"连上了但收不到"，便于一眼定位到 SnowLuma 的注入问题。
-            var state = connected && good ? ProbeState.Online
-                : connected ? ProbeState.Degraded
-                : ProbeState.Online;
+            // connected（WS 通）与 good（真的收得到 QQ 数据）含义不同：
+            // 后者为假通常意味着 SnowLuma 的原生注入退化，因此单独用"异常"表达。
+            var state = connected && good
+                ? ProbeState.Online
+                : connected ? ProbeState.Degraded : ProbeState.Online;
 
             var detail = $"模式 {mode} · 账号 {account} · 群 {allowGroups} / 私聊 {allowPrivate}";
-            return new ProbeResult(state, detail, new BridgeSnapshot(mode, connected, good, account, allowGroups, allowPrivate));
+            return new ProbeResult(
+                state,
+                detail,
+                new BridgeSnapshot(mode, connected, good, account, allowGroups, allowPrivate));
         }
         catch (JsonException)
         {
@@ -249,19 +303,21 @@ public partial class MainWindow : Window
     /// <summary>探测 DSH：Web API 端口是否可连。</summary>
     private async Task<ProbeResult> ProbeDshAsync(CancellationToken token)
     {
-        var open = await PortProbe.IsPortOpenAsync(_config.Dsh.Port, token).ConfigureAwait(false);
+        var config = CurrentConfig;
+
+        var open = await PortProbe.IsPortOpenAsync(config.Dsh.Port, token).ConfigureAwait(false);
         if (!open)
         {
-            return new ProbeResult(ProbeState.Offline, $"端口 {_config.Dsh.Port} 未监听");
+            return new ProbeResult(ProbeState.Offline, $"端口 {config.Dsh.Port} 未监听");
         }
 
         // DSH 需要会话 Cookie 鉴权，未带凭据时返回 401 属正常现象 —— 能握上手即视为在线。
-        var uri = new Uri(_endpoints.DshWeb, "/");
+        var uri = new Uri(CurrentEndpoints.DshWeb, "/");
         try
         {
             using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token)
                 .ConfigureAwait(false);
-            return new ProbeResult(ProbeState.Online, $"http://127.0.0.1:{_config.Dsh.Port}（HTTP {(int)response.StatusCode}）");
+            return new ProbeResult(ProbeState.Online, $"http://127.0.0.1:{config.Dsh.Port}（HTTP {(int)response.StatusCode}）");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -272,11 +328,13 @@ public partial class MainWindow : Window
     /// <summary>把桥接状态拼成可读的运行细节。</summary>
     private void BuildDetails(ProbeResult bridge)
     {
+        var config = CurrentConfig;
+
         if (bridge.Snapshot is not { } snapshot)
         {
             DetailsText.Text = $"桥接未就绪，无法读取运行细节。{Environment.NewLine}"
-                + $"配置目录：{_config.Bridge.Directory}{Environment.NewLine}"
-                + $"日志文件：{Path.Combine(_config.Bridge.Directory, "state", "bridge.log")}";
+                + $"配置目录：{config.Bridge.Directory}{Environment.NewLine}"
+                + $"日志文件：{_services.BridgeLogPath}";
             return;
         }
 
@@ -288,11 +346,12 @@ public partial class MainWindow : Window
             $"机器人账号    : {snapshot.Account}",
             $"白名单        : 群 {snapshot.AllowGroups} 个 / 私聊 {snapshot.AllowPrivate} 个",
             string.Empty,
-            $"桥接目录      : {_config.Bridge.Directory}",
-            $"桥接日志      : {Path.Combine(_config.Bridge.Directory, "state", "bridge.log")}",
-            $"活动日志      : {Path.Combine(_config.Bridge.Directory, "state", "qq-activity.log")}",
-            $"SnowLuma 目录 : {_config.SnowLuma.InstallDirectory}",
-            $"SnowLuma 日志 : {Path.Combine(_config.SnowLuma.InstallDirectory, "logs")}",
+            $"桥接目录      : {config.Bridge.Directory}",
+            $"桥接日志      : {_services.BridgeLogPath}",
+            $"活动日志      : {_services.BridgeActivityLogPath}",
+            $"SnowLuma 目录 : {config.SnowLuma.InstallDirectory}",
+            $"SnowLuma 日志 : {Path.Combine(config.SnowLuma.InstallDirectory, "logs")}",
+            $"配置文件      : {AppServices.ConfigFilePath}",
         };
 
         DetailsText.Text = string.Join(Environment.NewLine, lines);
@@ -301,13 +360,14 @@ public partial class MainWindow : Window
     /// <summary>更新底部路径提示，路径不存在时明确标出（排障时最常犯的配置错误）。</summary>
     private void UpdateFooter()
     {
-        var bridgeOk = Directory.Exists(_config.Bridge.Directory);
-        var snowLumaOk = Directory.Exists(_config.SnowLuma.InstallDirectory);
+        var config = CurrentConfig;
+        var bridgeOk = Directory.Exists(config.Bridge.Directory);
+        var snowLumaOk = Directory.Exists(config.SnowLuma.InstallDirectory);
 
         FooterText.Text =
-            $"桥接目录 {(bridgeOk ? "✓" : "✗ 不存在")} {_config.Bridge.Directory}    "
-            + $"SnowLuma {(snowLumaOk ? "✓" : "✗ 不存在")} {_config.SnowLuma.InstallDirectory}    "
-            + $"DSH {_config.Dsh.HomeDirectory}";
+            $"桥接目录 {(bridgeOk ? "✓" : "✗ 不存在")} {config.Bridge.Directory}    "
+            + $"SnowLuma {(snowLumaOk ? "✓" : "✗ 不存在")} {config.SnowLuma.InstallDirectory}    "
+            + $"DSH {config.Dsh.HomeDirectory}";
     }
 
     /// <summary>安全地 GET 一个 URL：失败一律返回 <c>null</c>，由调用方决定如何呈现。</summary>

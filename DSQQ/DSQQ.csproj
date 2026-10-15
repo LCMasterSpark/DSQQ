@@ -8,6 +8,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- 仅用于托盘图标（System.Windows.Forms.NotifyIcon）：不引入第三方托盘库 -->
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>DSQQ</RootNamespace>
     <AssemblyName>DSQQ</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -16,6 +18,12 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <!-- Metro 风格 UI：MahApps.Metro 的资源字典在 App.xaml 中合并 -->
+    <!--
+      WFO0003：WinForms 分析器建议改用 Application.SetHighDpiMode 配置 DPI。
+      本项目只在托盘用到 WinForms，界面完全由 WPF 渲染，DPI 已由 app.manifest 的
+      PerMonitorV2 声明管理；改用 WinForms 的 DPI API 反而会与 WPF 的 DPI 处理冲突。
+    -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
