@@ -49,6 +49,14 @@ public partial class BridgeConsoleView : UserControl
 
         ModeCombo.ItemsSource = Modes.Select(m => m.Label).ToList();
         GroupList.ItemsSource = _groups;
+        RoleList.ItemsSource = _roles;
+        SlangList.ItemsSource = _slang;
+
+        SlangFilterCombo.ItemsSource = new[] { "全部", "仅候选", "仅已确认" };
+        SlangFilterCombo.SelectedIndex = 0;
+
+        PresetCombo.ItemsSource = Presets;
+        PresetCombo.SelectedIndex = Presets.Length - 1;
         SessionGrid.ItemsSource = _sessions;
 
         Loaded += async (_, _) => await ReloadAsync();
@@ -90,6 +98,8 @@ public partial class BridgeConsoleView : UserControl
         await LoadPersonaAsync();
         await LoadQuotaAsync();
         await LoadTokensAsync();
+        await LoadRolesAsync();
+        await LoadSlangAsync();
 
         StatusText.Text = $"已载入（{DateTime.Now:HH:mm:ss}）";
         HintText.Text = $"桥接地址：{_services.Endpoints.BridgeConsole}";
@@ -345,4 +355,326 @@ public partial class BridgeConsoleView : UserControl
     // 宽松的整数解析：失败返回 false 而不抛异常。
     private static bool TryParseInt(string text, out int value)
         => int.TryParse(text.Trim(), out value);
+    // ── 角色（人格）──
+
+    // 角色列表。
+    private readonly ObservableCollection<RoleSummary> _roles = [];
+
+    // 黑话词条（已按筛选条件过滤）。
+    private readonly ObservableCollection<SlangEntry> _slang = [];
+
+    // 全部黑话词条（原始数据，筛选时从这里取）。
+    private List<SlangEntry> _allSlang = [];
+
+    // 程序设置 RoleContentBox 时抑制 TextChanged，避免污染状态提示。
+    private bool _suppressRoleTextChanged;
+
+    // 载入角色列表。
+    private async Task LoadRolesAsync()
+    {
+        var response = await _client.GetRolesAsync();
+        if (response is null)
+        {
+            RoleStatusText.Text = "未能读取角色列表。";
+            return;
+        }
+
+        _roles.Clear();
+        foreach (var summary in response.Summaries)
+        {
+            _roles.Add(summary);
+        }
+
+        RoleStatusText.Text = response.Current is null
+            ? $"共 {_roles.Count} 个角色，当前未启用。"
+            : $"共 {_roles.Count} 个角色，当前启用：{response.Current}";
+
+        if (response.Limits is { } limits)
+        {
+            RoleLimitText.Text = $"限制：名称 ≤ {limits.NameMax} 字，正文 ≤ {limits.ContentMaxBytes / 1024} KB，注入 ≤ {limits.InjectMaxChars} 字";
+        }
+    }
+
+    // 选中角色时载入其正文。
+    private async void OnRoleSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (RoleList.SelectedItem is not RoleSummary summary)
+        {
+            return;
+        }
+
+        var content = await _client.GetRoleContentAsync(summary.Name);
+        if (content is null)
+        {
+            RoleStatusText.Text = $"未能读取「{summary.Name}」的正文。";
+            return;
+        }
+
+        _suppressRoleTextChanged = true;
+        RoleNameBox.Text = content.Name;
+        RoleContentBox.Text = content.Content;
+        _suppressRoleTextChanged = false;
+
+        UpdateRoleInjectHint();
+    }
+
+    // 正文变化时实时提示注入字符数（超出上限会在实际对话中被截断）。
+    private void OnRoleContentChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressRoleTextChanged)
+        {
+            return;
+        }
+
+        UpdateRoleInjectHint();
+    }
+
+    private void UpdateRoleInjectHint()
+    {
+        var chars = RoleContentBox.Text.Length;
+        RoleInjectHint.Text = $"当前正文 {chars} 字。超过注入上限的部分不会进入对话上下文；"
+            + "含「一代专用指令」的内容会在二代仿真模式下被跳过。";
+    }
+
+    private async void OnRoleReloadClick(object sender, RoutedEventArgs e) => await LoadRolesAsync();
+
+    // 启用选中角色。
+    private async void OnRoleEnableClick(object sender, RoutedEventArgs e)
+    {
+        if (RoleList.SelectedItem is not RoleSummary summary)
+        {
+            RoleStatusText.Text = "请先在列表中选择一个角色。";
+            return;
+        }
+
+        var ok = await _client.SetCurrentRoleAsync(summary.Name);
+        RoleStatusText.Text = ok ? $"已启用「{summary.Name}」（下一条消息生效）" : "启用失败。";
+    }
+
+    // 清除当前角色。
+    private async void OnRoleClearClick(object sender, RoutedEventArgs e)
+    {
+        var ok = await _client.SetCurrentRoleAsync(string.Empty);
+        RoleStatusText.Text = ok ? "已清除角色（恢复为纯仿真提示词）。" : "清除失败。";
+    }
+
+    // 新建角色：清空编辑区，用户填名字与正文后点「保存正文」。
+    private void OnRoleNewClick(object sender, RoutedEventArgs e)
+    {
+        _suppressRoleTextChanged = true;
+        RoleNameBox.Text = string.Empty;
+        RoleContentBox.Text = string.Empty;
+        _suppressRoleTextChanged = false;
+
+        RoleList.SelectedItem = null;
+        RoleStatusText.Text = "已清空编辑区：填写名称与正文后点「保存正文」即创建新角色。";
+    }
+
+    // 保存角色正文（不存在时由后端按新建处理）。
+    private async void OnRoleSaveClick(object sender, RoutedEventArgs e)
+    {
+        var name = RoleNameBox.Text.Trim();
+        if (name.Length == 0)
+        {
+            RoleStatusText.Text = "角色名不能为空。";
+            return;
+        }
+
+        var ok = await _client.SaveRoleAsync(name, RoleContentBox.Text);
+        RoleStatusText.Text = ok ? $"已保存「{name}」。" : "保存失败（名称或正文可能超出限制）。";
+        if (ok)
+        {
+            await LoadRolesAsync();
+        }
+    }
+
+    // 删除选中角色。
+    private async void OnRoleDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (RoleList.SelectedItem is not RoleSummary summary)
+        {
+            RoleStatusText.Text = "请先选择要删除的角色。";
+            return;
+        }
+
+        var ok = await _client.DeleteRoleAsync(summary.Name);
+        RoleStatusText.Text = ok ? $"已删除「{summary.Name}」。" : "删除失败。";
+        if (ok)
+        {
+            await LoadRolesAsync();
+        }
+    }
+
+    // 重命名：用编辑区里的名字作为新名。
+    private async void OnRoleRenameClick(object sender, RoutedEventArgs e)
+    {
+        if (RoleList.SelectedItem is not RoleSummary summary)
+        {
+            RoleStatusText.Text = "请先选择要改名的角色。";
+            return;
+        }
+
+        var newName = RoleNameBox.Text.Trim();
+        if (newName.Length == 0 || newName == summary.Name)
+        {
+            RoleStatusText.Text = "请先把编辑区的名称改成新名字，再点「改名」。";
+            return;
+        }
+
+        var ok = await _client.RenameRoleAsync(summary.Name, newName);
+        RoleStatusText.Text = ok ? $"已改名为「{newName}」。" : "改名失败。";
+        if (ok)
+        {
+            await LoadRolesAsync();
+        }
+    }
+
+    // ── 黑话词库 ──
+
+    // 载入黑话词条。
+    private async Task LoadSlangAsync()
+    {
+        var response = await _client.GetSlangAsync();
+        if (response is null)
+        {
+            SlangStatusText.Text = "未能读取黑话词库。";
+            return;
+        }
+
+        _allSlang = response.Entries;
+        ApplySlangFilter();
+
+        var candidates = _allSlang.Count(x => x.IsCandidate);
+        SlangStatusText.Text = $"共 {_allSlang.Count} 条，其中候选 {candidates} 条。";
+    }
+
+    // 按状态下拉框过滤。
+    private void ApplySlangFilter()
+    {
+        var filter = SlangFilterCombo.SelectedItem?.ToString() ?? "全部";
+        var items = filter switch
+        {
+            "仅候选" => _allSlang.Where(x => x.IsCandidate),
+            "仅已确认" => _allSlang.Where(x => !x.IsCandidate),
+            _ => _allSlang,
+        };
+
+        _slang.Clear();
+        foreach (var entry in items)
+        {
+            _slang.Add(entry);
+        }
+
+        SlangDetailText.Text = $"当前显示 {_slang.Count} 条。候选词条来自群里出现的表达，"
+            + "确认后会进入提示词供 AI 参考；拒绝或删除则不再参与。";
+    }
+
+    private void OnSlangFilterChanged(object sender, SelectionChangedEventArgs e) => ApplySlangFilter();
+
+    private async void OnSlangReloadClick(object sender, RoutedEventArgs e) => await LoadSlangAsync();
+
+    // 触发一次提取（耗时较长，桥接在后台跑）。
+    private async void OnSlangExtractClick(object sender, RoutedEventArgs e)
+    {
+        SlangStatusText.Text = "已请求提取，稍后刷新查看结果…";
+        var ok = await _client.ExtractSlangAsync();
+        if (!ok)
+        {
+            SlangStatusText.Text = "提取请求失败（桥接未运行或该功能已关闭）。";
+        }
+    }
+
+    // 取选中的词条 ID；未选中时给出提示。
+    private List<string>? SelectedSlangIds()
+    {
+        var ids = SlangList.SelectedItems.Cast<SlangEntry>().Select(x => x.Id).ToList();
+        if (ids.Count == 0)
+        {
+            SlangActionHint.Text = "请先在列表中选择词条（可按住 Ctrl 多选）。";
+            return null;
+        }
+
+        return ids;
+    }
+
+    private async void OnSlangConfirmClick(object sender, RoutedEventArgs e)
+    {
+        if (SelectedSlangIds() is not { } ids)
+        {
+            return;
+        }
+
+        var ok = await _client.ConfirmSlangAsync(ids);
+        SlangActionHint.Text = ok ? $"已确认 {ids.Count} 条。" : "确认失败。";
+        if (ok)
+        {
+            await LoadSlangAsync();
+        }
+    }
+
+    private async void OnSlangRejectClick(object sender, RoutedEventArgs e)
+    {
+        if (SelectedSlangIds() is not { } ids)
+        {
+            return;
+        }
+
+        var ok = await _client.RejectSlangAsync(ids);
+        SlangActionHint.Text = ok ? $"已拒绝 {ids.Count} 条。" : "拒绝失败。";
+        if (ok)
+        {
+            await LoadSlangAsync();
+        }
+    }
+
+    private async void OnSlangDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (SelectedSlangIds() is not { } ids)
+        {
+            return;
+        }
+
+        var ok = await _client.DeleteSlangAsync(ids);
+        SlangActionHint.Text = ok ? $"已删除 {ids.Count} 条。" : "删除失败。";
+        if (ok)
+        {
+            await LoadSlangAsync();
+        }
+    }
+
+    // ── 仿真提示词 ──
+
+    // 可选预设（与桥接的 preset 名一致）。
+    private static readonly string[] Presets = ["qq-chat", "qq-chat-v2"];
+
+    private async void OnPresetLoadClick(object sender, RoutedEventArgs e)
+    {
+        var preset = PresetCombo.SelectedItem?.ToString() ?? Presets[^1];
+        var response = await _client.GetSimPromptAsync(preset);
+
+        if (response is null)
+        {
+            PresetStatusText.Text = $"载入失败：找不到预设 {preset}。";
+            return;
+        }
+
+        PresetContentBox.Text = response.Content;
+
+        var status = response.Status;
+        PresetStatusText.Text = status is null
+            ? $"已载入 {preset}（{response.Content.Length} 字）"
+            : $"已载入 {status.Label ?? preset}（{response.Content.Length} 字）"
+              + (status.RequiresRestart ? "；保存后需重启 DSH 生效" : string.Empty);
+    }
+
+    private async void OnPresetSaveClick(object sender, RoutedEventArgs e)
+    {
+        var preset = PresetCombo.SelectedItem?.ToString() ?? Presets[^1];
+        var ok = await _client.SaveSimPromptAsync(preset, PresetContentBox.Text);
+
+        // 桥接会做不变量校验，被拒时通常是删掉了权限边界表述或正文过短。
+        PresetStatusText.Text = ok
+            ? $"已保存 {preset}；需重启 DSH 生效。"
+            : "保存被拒绝：可能缺少安全不变量（权限边界、令牌、角色注入等）或正文过短。";
+    }
 }

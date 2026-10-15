@@ -166,6 +166,88 @@ public sealed class BridgeApiClient : IDisposable
     }
 
     // GET 并反序列化；任何失败都返回 null。
+    // 读取角色（人格）列表与当前启用项。
+    public Task<RoleListResponse?> GetRolesAsync(CancellationToken cancellationToken = default)
+        => GetAsync<RoleListResponse>("/api/roles", cancellationToken);
+
+    // 读取单个角色的正文。
+    public Task<RoleContentResponse?> GetRoleContentAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return GetAsync<RoleContentResponse>($"/api/roles/content?name={Uri.EscapeDataString(name)}", cancellationToken);
+    }
+
+    // 保存角色正文（不存在则按新建处理）。
+    public Task<bool> SaveRoleAsync(string name, string content, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return PostAsync("/api/roles/update", new { name, content }, cancellationToken);
+    }
+
+    // 重命名角色。
+    public Task<bool> RenameRoleAsync(string name, string newName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+        return PostAsync("/api/roles/rename", new { name, newName }, cancellationToken);
+    }
+
+    // 删除角色。
+    public Task<bool> DeleteRoleAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return PostAsync("/api/roles/delete", new { name }, cancellationToken);
+    }
+
+    // 启用或清除当前角色（传空字符串表示清除）。
+    public Task<bool> SetCurrentRoleAsync(string name, CancellationToken cancellationToken = default)
+        => PostAsync("/api/role", new { name }, cancellationToken);
+
+    // 读取仿真提示词（预设内置的那一层）。
+    public Task<SimPromptResponse?> GetSimPromptAsync(string preset, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(preset);
+        return GetAsync<SimPromptResponse>($"/api/preset/sim-prompt?preset={Uri.EscapeDataString(preset)}", cancellationToken);
+    }
+
+    // 保存仿真提示词；桥接会先做安全不变量校验，不合规会被拒绝。
+    public Task<bool> SaveSimPromptAsync(string preset, string content, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(preset);
+        return PostAsync("/api/preset/sim-prompt", new { preset, content }, cancellationToken);
+    }
+
+    // 读取黑话词库。
+    public Task<SlangResponse?> GetSlangAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SlangResponse>("/api/slang", cancellationToken);
+
+    // 批量确认候选词条。
+    public Task<bool> ConfirmSlangAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default)
+        => PostAsync("/api/slang/batch-confirm", new { ids }, cancellationToken);
+
+    // 批量拒绝候选词条。
+    public Task<bool> RejectSlangAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default)
+        => PostAsync("/api/slang/batch-reject", new { ids }, cancellationToken);
+
+    // 批量删除词条。
+    public Task<bool> DeleteSlangAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default)
+        => PostAsync("/api/slang/batch-delete", new { ids }, cancellationToken);
+
+    // 触发一次黑话提取。
+    public Task<bool> ExtractSlangAsync(CancellationToken cancellationToken = default)
+        => PostAsync("/api/slang/extract", new { }, cancellationToken);
+
+    // 读取会话模式。
+    public Task<SessionModeResponse?> GetSessionModeAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SessionModeResponse>("/api/config/session-mode", cancellationToken);
+
+    // 设置会话模式；当前桥接仅支持 per-conversation。
+    public Task<bool> SetSessionModeAsync(string sessionMode, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionMode);
+        return PostAsync("/api/config/session-mode", new { sessionMode }, cancellationToken);
+    }
+
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)
         where T : class
     {

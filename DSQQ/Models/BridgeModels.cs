@@ -354,3 +354,151 @@ public sealed class ActivityConfig
     [JsonPropertyName("autoReplyCheckMs")]
     public int AutoReplyCheckMs { get; set; }
 }
+
+// 角色列表（/api/roles）。
+public sealed class RoleListResponse
+{
+    [JsonPropertyName("roles")]
+    public List<string> Roles { get; set; } = [];
+
+    [JsonPropertyName("summaries")]
+    public List<RoleSummary> Summaries { get; set; } = [];
+
+    // 当前启用的角色名；未启用为 null。
+    [JsonPropertyName("current")]
+    public string? Current { get; set; }
+
+    [JsonPropertyName("limits")]
+    public RoleLimits? Limits { get; set; }
+}
+
+// 单个角色的摘要与校验状态。
+public sealed class RoleSummary
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("chars")]
+    public int Chars { get; set; }
+
+    // 二代仿真模式下实际注入的字符数。
+    [JsonPropertyName("injectedV2")]
+    public int InjectedV2 { get; set; }
+
+    // 是否超出注入上限。
+    [JsonPropertyName("truncated")]
+    public bool Truncated { get; set; }
+
+    // 校验告警数（例如含一代专用指令）。
+    [JsonPropertyName("warnings")]
+    public int Warnings { get; set; }
+
+    [JsonPropertyName("excerpt")]
+    public string? Excerpt { get; set; }
+
+    // 列表显示文本：把"多少字/是否超限/有无告警"一次说清，避免用户点进去才发现问题。
+    public string Display => $"{Name}（{Chars} 字 / 注入 {InjectedV2} 字"
+        + (Truncated ? " · 超上限" : string.Empty)
+        + (Warnings > 0 ? $" · {Warnings} 项告警" : string.Empty)
+        + "）";
+}
+
+// 角色名与正文的长度约束（由桥接下发的 limits）。
+public sealed class RoleLimits
+{
+    [JsonPropertyName("nameMax")]
+    public int NameMax { get; set; }
+
+    [JsonPropertyName("contentMaxBytes")]
+    public int ContentMaxBytes { get; set; }
+
+    [JsonPropertyName("injectMaxChars")]
+    public int InjectMaxChars { get; set; }
+}
+
+// 单个角色的正文（/api/roles/content）。
+public sealed class RoleContentResponse
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+}
+
+// 仿真提示词（/api/preset/sim-prompt）。
+public sealed class SimPromptResponse
+{
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public SimPromptStatus? Status { get; set; }
+}
+
+// 仿真提示词的来源信息。
+public sealed class SimPromptStatus
+{
+    [JsonPropertyName("preset")]
+    public string? Preset { get; set; }
+
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
+
+    [JsonPropertyName("installed")]
+    public bool Installed { get; set; }
+
+    // 保存后是否需要重启 DSH 才生效。
+    [JsonPropertyName("requiresRestart")]
+    public bool RequiresRestart { get; set; }
+}
+
+// 黑话词库（/api/slang）。
+public sealed class SlangResponse
+{
+    [JsonPropertyName("entries")]
+    public List<SlangEntry> Entries { get; set; } = [];
+}
+
+// 一条黑话词条。
+public sealed class SlangEntry
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    [JsonPropertyName("meaning")]
+    public string? Meaning { get; set; }
+
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
+
+    [JsonPropertyName("count")]
+    public int Count { get; set; }
+
+    // 只有候选词条才允许"确认/拒绝"操作。
+    public bool IsCandidate => string.Equals(Status, "candidate", StringComparison.OrdinalIgnoreCase);
+
+    public string Display => $"[{Status}] {Content}"
+        + (string.IsNullOrWhiteSpace(Meaning) ? string.Empty : $" —— {Meaning}")
+        + (Count > 0 ? $"（{Count} 次）" : string.Empty);
+}
+
+// 会话模式（/api/config/session-mode）。
+public sealed class SessionModeResponse
+{
+    [JsonPropertyName("sessionMode")]
+    public string? SessionMode { get; set; }
+
+    [JsonPropertyName("conversationCount")]
+    public int ConversationCount { get; set; }
+
+    [JsonPropertyName("sessionCount")]
+    public int SessionCount { get; set; }
+
+    // 共享会话模式的所有者 key（该模式当前已停用，仅作展示）。
+    [JsonPropertyName("ownerKey")]
+    public string? OwnerKey { get; set; }
+}
