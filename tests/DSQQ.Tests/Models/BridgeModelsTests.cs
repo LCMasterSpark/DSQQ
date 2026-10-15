@@ -63,6 +63,109 @@ public sealed class BridgeModelsTests
     }
 
     [Fact]
+    public void 活跃度预设_必须满足桥接的范围与联动约束()
+    {
+        // 桥接对 /api/config/activity 有一套范围校验 + 四条联动校验，
+        // 任一不满足就整档返回 400。预设是写死的数据，最容易写错又看不出来，
+        // 所以这里把桥接的规则抄过来逐个核对。
+        // 键名 → (最小值, 最大值)
+        var ranges = new Dictionary<string, (int Min, int Max)>(StringComparer.Ordinal)
+        {
+            ["sleepMinMs"] = (0, 86_400_000),
+            ["sleepMaxMs"] = (0, 86_400_000),
+            ["recommendedSleepMinMs"] = (1_000, 86_400_000),
+            ["recommendedSleepMaxMs"] = (1_000, 86_400_000),
+            ["maxWakePerHour"] = (0, 1_000),
+            ["maxWakePerMinute"] = (0, 100),
+            ["preSleepWaitMs"] = (0, 3_600_000),
+            ["batchWindowMs"] = (1_000, 600_000),
+            ["autoReplyCheckMs"] = (1_000, 600_000),
+            ["maxSendPerHour"] = (0, 10_000),
+            ["maxSendPerMinute"] = (0, 1_000),
+            ["burstIntervalMinMs"] = (0, 600_000),
+            ["burstIntervalMaxMs"] = (0, 600_000),
+            ["gapBaseMs"] = (0, 600_000),
+            ["gapPerCharMs"] = (0, 1_000),
+            ["maxMessageChars"] = (1, 5_000),
+        };
+
+        Assert.Equal(3, DSQQ.Models.ActivityPresets.All.Count);
+
+        foreach (var preset in DSQQ.Models.ActivityPresets.All)
+        {
+            // 每个字段都要在范围内
+            foreach (var (key, value) in preset.Values)
+            {
+                Assert.True(ranges.ContainsKey(key), $"预设「{preset.Name}」含未知字段 {key}");
+                var (min, max) = ranges[key];
+                Assert.True(
+                    value >= min && value <= max,
+                    $"预设「{preset.Name}」的 {key}={value} 超出桥接允许的 {min}~{max}");
+            }
+
+            // 四条联动校验（与桥接的判定逐条对应）
+            Assert.True(
+                preset.Values["sleepMaxMs"] <= 0
+                    || preset.Values["sleepMinMs"] <= preset.Values["sleepMaxMs"],
+                $"预设「{preset.Name}」最短潜水大于最长潜水");
+
+            Assert.True(
+                preset.Values["recommendedSleepMinMs"] <= preset.Values["recommendedSleepMaxMs"],
+                $"预设「{preset.Name}」推荐最短大于推荐最长");
+
+            Assert.True(
+                preset.Values["burstIntervalMinMs"] <= preset.Values["burstIntervalMaxMs"],
+                $"预设「{preset.Name}」连发最短间隔大于最长间隔");
+
+            Assert.True(
+                preset.Values["sleepMaxMs"] <= 0
+                    || preset.Values["recommendedSleepMaxMs"] <= preset.Values["sleepMaxMs"],
+                $"预设「{preset.Name}」推荐最长超过最长潜水");
+        }
+    }
+
+    [Fact]
+    public void 活跃度预设_每档覆盖同一组字段()
+    {
+        // 套用预设时是按键写入输入框的；若某档缺了字段，那一项就会**保留上一档的值**，
+        // 而不是被重置 —— 用户看到的会是"混了两档"的配置，且没有任何提示。
+        var expected = DSQQ.Models.ActivityPresets.All[0].Values.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+
+        foreach (var preset in DSQQ.Models.ActivityPresets.All)
+        {
+            var keys = preset.Values.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+            Assert.Equal(expected, keys);
+        }
+
+        // 同时确认没有漏掉"可编辑字段"里的项（maxWakePerMinute 等必须在预设里出现）。
+        Assert.Contains("maxMessageChars", expected);
+        Assert.Contains("maxWakePerMinute", expected);
+        Assert.Contains("recommendedSleepMinMs", expected);
+    }
+
+    [Fact]
+    public void 活跃度预设_由高到低排列()
+    {
+        // 用户预期「高频 → 标准 → 低频」是逐渐安静的，这靠两个关键指标就能判定。
+        var presets = DSQQ.Models.ActivityPresets.All;
+
+        Assert.Equal("高频", presets[0].Name);
+        Assert.Equal("标准", presets[1].Name);
+        Assert.Equal("低频", presets[2].Name);
+
+        for (var i = 1; i < presets.Count; i++)
+        {
+            Assert.True(
+                presets[i].Values["maxWakePerHour"] < presets[i - 1].Values["maxWakePerHour"],
+                $"「{presets[i].Name}」的每小时唤醒上限应低于「{presets[i - 1].Name}」");
+
+            Assert.True(
+                presets[i].Values["sleepMinMs"] > presets[i - 1].Values["sleepMinMs"],
+                $"「{presets[i].Name}」的最短潜水应长于「{presets[i - 1].Name}」");
+        }
+    }
+
+    [Fact]
     public void RoleListResponse_应能解析真实响应形状()
     {
         // 取自桥接 /api/roles 的真实结构。

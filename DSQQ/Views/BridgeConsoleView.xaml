@@ -283,6 +283,18 @@
                     <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.75"
                                Text="所有时间项单位均为毫秒（1000 = 1 秒）。保存为增量提交，只改动过的项会写入；未改动的由桥接保持现状。范围与联动关系由桥接校验（例如最短潜水不能大于最长潜水）。" />
 
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock Text="预设" VerticalAlignment="Center" Opacity="0.75" />
+                        <Button x:Name="PresetHighButton" Content="高频" Width="70" Height="28" Margin="8,0,0,0"
+                                Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnPresetHighClick" />
+                        <Button x:Name="PresetNormalButton" Content="标准" Width="70" Height="28" Margin="8,0,0,0"
+                                Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnPresetNormalClick" />
+                        <Button x:Name="PresetLowButton" Content="低频" Width="70" Height="28" Margin="8,0,0,0"
+                                Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnPresetLowClick" />
+                        <TextBlock Margin="14,0,0,0" VerticalAlignment="Center" Opacity="0.6" TextWrapping="Wrap"
+                                   Text="点一下即把整组参数写入（会先确认，覆盖当前值）" />
+                    </StackPanel>
+
                     <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <!-- 分组一：唤醒频率 -->

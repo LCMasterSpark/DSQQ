@@ -251,7 +251,10 @@ public partial class BridgeConsoleView : UserControl
 
         if (selection is not null)
         {
-            var options = selection.Options.Count > 0 ? selection.Options : new List<string> { "low", "high", "max" };
+            // 用了具体类型 List<string>：这里若写成 [] 会被推断为 string[]，与下面三元表达式的 List<string> 类型不一致。
+            var options = selection.Options.Count > 0
+                ? selection.Options
+                : new List<string> { "low", "high", "max" };
             EffortCombo.ItemsSource = options;
             var current = ChooseEffort(selection.ReasoningEffort);
             EffortCombo.SelectedItem = options.FirstOrDefault(o => string.Equals(o, current, StringComparison.OrdinalIgnoreCase))
@@ -893,13 +896,22 @@ public partial class BridgeConsoleView : UserControl
             $"桥接推荐：潜水 {fmt(config.RecommendedSleepMinMs)} ~ {fmt(config.RecommendedSleepMaxMs)}；"
             + "潜水时长过短会显得一直在刷屏，过长则错过话题。";
 
-        ActivityHintText.Text = "已载入。修改后点「保存改动」，只提交改动过的项。";
+        ActivityHintText.Text = $"已载入（当前 {MatchActivityPreset(config) ?? "自定义"}）。修改后点「保存改动」，只提交改动过的项。";
     }
+
+    // 与当前配置完全一致的预设名；都不匹配时返回 null（即"自定义"）。
+    // 注意：元组不支持 ?. 取成员，所以先投影出名字再 FirstOrDefault。
+    private static string? MatchActivityPreset(ActivityConfig config)
+        => Models.ActivityPresets.All
+            .Where(p => p.Values.All(v => ReadActivityValue(config, v.Key) == v.Value.ToString()))
+            .Select(p => p.Name)
+            .FirstOrDefault();
 
     private async void OnReloadActivityClick(object sender, RoutedEventArgs e) => await LoadActivityAsync();
 
     // 收集并保存改动。返回是否保存成功（部分失败时把桥接原话显示出来）。
-    private async Task<bool> SaveActivityAsync()
+    // 参数 batchLabel：整组应用时的说明（预设名），用于把成功提示写得更明确。
+    private async Task<bool> SaveActivityAsync(string? batchLabel = null)
     {
         if (_activityBaseline is not { } baseline)
         {
@@ -962,10 +974,68 @@ public partial class BridgeConsoleView : UserControl
             return false;
         }
 
-        ActivityHintText.Text = $"已保存 {changes.Count} 项（即时生效）。";
+        var changedKeys = new HashSet<string>(changes.Keys, StringComparer.Ordinal);
+        var presetName = MatchActivityPreset(await _client.GetActivityConfigAsync() ?? baseline);
+
+        ActivityHintText.Text = batchLabel is null
+            ? $"已保存 {changes.Count} 项（即时生效）。"
+            : $"已应用预设「{batchLabel}」，共写入 {changes.Count} 项。";
+
         await LoadActivityAsync();   // 取回桥接侧的最终值，顺带清掉改动集
+
+        // LoadActivityAsync 会把提示改成"已载入"，这里补回本次操作的结果。
+        ActivityHintText.Text = batchLabel is null
+            ? $"已保存 {changes.Count} 项（即时生效；当前 {presetName ?? "自定义"}）。"
+            : $"已应用预设「{batchLabel}」，共写入 {changes.Count} 项。";
+
+        _ = changedKeys;
         return true;
     }
 
     private async void OnSaveActivityClick(object sender, RoutedEventArgs e) => await SaveActivityAsync();
+
+
+    private async void OnPresetHighClick(object sender, RoutedEventArgs e) => await ApplyPresetAsync(0);
+
+    private async void OnPresetNormalClick(object sender, RoutedEventArgs e) => await ApplyPresetAsync(1);
+
+    private async void OnPresetLowClick(object sender, RoutedEventArgs e) => await ApplyPresetAsync(2);
+
+    // 应用一档预设：先写进输入框（让用户看到改了什么），再走与手动保存相同的增量提交路径。
+    private async Task ApplyPresetAsync(int index)
+    {
+        if (_activityBaseline is null)
+        {
+            ActivityHintText.Text = "请先点「重新载入」取得当前配置，再套用预设。";
+            return;
+        }
+
+        var preset = Models.ActivityPresets.All[index];
+
+        var answer = System.Windows.MessageBox.Show(
+            $"套用「{preset.Name}」预设？\n\n{preset.Description}\n\n"
+            + $"即将写入 {preset.Values.Count} 项参数，会覆盖这些项当前的值。",
+            "确认套用预设",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            ActivityHintText.Text = "已取消。";
+            return;
+        }
+
+        // 先落到输入框：失败时用户也能直接看到被改成了什么。
+        foreach (var field in ActivityFields())
+        {
+            if (field.Kind == "Bool" || !preset.Values.TryGetValue(field.JsonKey, out var value))
+            {
+                continue;
+            }
+
+            field.Accessor().Text = value.ToString();
+        }
+
+        await SaveActivityAsync(preset.Name);
+    }
 }

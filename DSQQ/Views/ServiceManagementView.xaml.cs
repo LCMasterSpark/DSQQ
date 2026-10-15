@@ -1,5 +1,8 @@
 using UserControl = System.Windows.Controls.UserControl;
 using System.Collections.ObjectModel;
+using System.ComponentModel;      // Win32Exception（打开浏览器失败时用）
+using System.Diagnostics;         // Process.Start
+using System.IO;                  // FileNotFoundException
 using System.Windows;
 using System.Windows.Controls;
 using DSQQ.Services;
@@ -146,6 +149,45 @@ public partial class ServiceManagementView : UserControl
 
     // 刷新端口状态。
     private async void OnRefreshPortsClick(object sender, RoutedEventArgs e) => await RefreshPortsAsync();
+
+    // 打开 SnowLuma 控制台。
+    //
+    // 这是"唤起 OneBot"的入口：OneBot 的 3000/3001 由 SnowLuma 在**账号登录后**才启动，
+    // 而 SnowLuma 没有提供启停 OneBot 的接口（只有配置读写与登录），
+    // 所以正确做法是把用户送到控制台去完成登录，而不是去"启动一个服务"。
+    // 按 EULA §5.4，协议同意与扫码登录必须由用户本人在其界面完成，这里只负责打开页面。
+    private async void OnOpenSnowLumaClick(object sender, RoutedEventArgs e)
+    {
+        var config = _services.Config;
+        var webUiPort = config.SnowLuma.PreferredWebUiPort;
+        var uri = _services.Endpoints.SnowLumaWebUi;
+
+        var webUiUp = await PortProbe.IsPortOpenAsync(webUiPort).ConfigureAwait(true);
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.ToString()) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or FileNotFoundException)
+        {
+            // 常见于没有配置默认浏览器；把地址给出来，用户可以自己粘贴。
+            ProgressText.Text = $"无法自动打开浏览器：{ex.Message}{Environment.NewLine}请手动访问 {uri}";
+            return;
+        }
+
+        if (!webUiUp)
+        {
+            ProgressText.Text =
+                $"SnowLuma 控制台（{webUiPort}）当前未监听，页面可能打不开。"
+                + $"请先点「一键启动」，或手动启动 SnowLuma。{Environment.NewLine}已尝试打开：{uri}";
+            return;
+        }
+
+        var oneBotHttpUp = await PortProbe.IsPortOpenAsync(3000).ConfigureAwait(true);
+        ProgressText.Text = oneBotHttpUp
+            ? $"已打开 {uri}。OneBot（3000/3001）已在运行。"
+            : $"已打开 {uri}。OneBot（3000/3001）尚未监听 —— 在控制台里完成 QQ 账号登录后它会自动启动。";
+    }
 
     // 重新采集端口与 PID。
     // OneBot 的两个端口是约定值（桥接与 SnowLuma 都按 3000/3001 通信），

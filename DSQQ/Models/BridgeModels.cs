@@ -463,6 +463,88 @@ public sealed class ActivityConfig
     public int MaxMessageChars { get; set; }
 }
 
+// 活跃度预设：一档可整套套用的参数。
+// 参数 Name：档位名（高频 / 标准 / 低频）。
+// 参数 Description：一句话说明代价与效果，界面在确认框里展示。
+// 参数 Values：JSON 键 → 值，键名必须与桥接 /api/config/activity 一致。
+public sealed record ActivityPreset(
+    string Name,
+    string Description,
+    IReadOnlyDictionary<string, int> Values);
+
+// 三档预设，由高到低。
+//
+// 放在模型层而不是视图里，是为了让单元测试能直接校验它们 ——
+// 桥接对这个端点有单字段范围校验加四条联动校验，任一不满足就整档 400。
+// 取值说明：
+//   · sleepMaxMs = 0 表示"不限制最长潜水"，但此时 recommendedSleepMaxMs 不得大于它，
+//     所以高频档也不能用 0；
+//   · recommendedSleepMinMs <= recommendedSleepMaxMs，且都 >= 1000；
+//   · burstIntervalMinMs <= burstIntervalMaxMs。
+public static class ActivityPresets
+{
+    public static IReadOnlyList<ActivityPreset> All { get; } =
+    [
+        new("高频", "基本随叫随到，token 消耗明显更高", new Dictionary<string, int>
+        {
+            ["sleepMinMs"] = 10_000,
+            ["sleepMaxMs"] = 300_000,
+            ["recommendedSleepMinMs"] = 60_000,
+            ["recommendedSleepMaxMs"] = 300_000,
+            ["maxWakePerHour"] = 60,
+            ["maxWakePerMinute"] = 6,
+            ["preSleepWaitMs"] = 30_000,
+            ["batchWindowMs"] = 2_000,
+            ["autoReplyCheckMs"] = 10_000,
+            ["maxSendPerHour"] = 200,
+            ["maxSendPerMinute"] = 20,
+            ["burstIntervalMinMs"] = 500,
+            ["burstIntervalMaxMs"] = 2_000,
+            ["gapBaseMs"] = 400,
+            ["gapPerCharMs"] = 10,
+            ["maxMessageChars"] = 500,
+        }),
+        new("标准", "接近出厂默认，均衡", new Dictionary<string, int>
+        {
+            ["sleepMinMs"] = 60_000,
+            ["sleepMaxMs"] = 1_800_000,
+            ["recommendedSleepMinMs"] = 300_000,
+            ["recommendedSleepMaxMs"] = 1_800_000,
+            ["maxWakePerHour"] = 12,
+            ["maxWakePerMinute"] = 1,
+            ["preSleepWaitMs"] = 300_000,
+            ["batchWindowMs"] = 8_000,
+            ["autoReplyCheckMs"] = 30_000,
+            ["maxSendPerHour"] = 60,
+            ["maxSendPerMinute"] = 8,
+            ["burstIntervalMinMs"] = 1_000,
+            ["burstIntervalMaxMs"] = 3_000,
+            ["gapBaseMs"] = 800,
+            ["gapPerCharMs"] = 20,
+            ["maxMessageChars"] = 500,
+        }),
+        new("低频", "很少主动冒泡，省 token", new Dictionary<string, int>
+        {
+            ["sleepMinMs"] = 300_000,
+            ["sleepMaxMs"] = 7_200_000,
+            ["recommendedSleepMinMs"] = 900_000,
+            ["recommendedSleepMaxMs"] = 7_200_000,
+            ["maxWakePerHour"] = 6,
+            ["maxWakePerMinute"] = 1,
+            ["preSleepWaitMs"] = 300_000,
+            ["batchWindowMs"] = 15_000,
+            ["autoReplyCheckMs"] = 60_000,
+            ["maxSendPerHour"] = 20,
+            ["maxSendPerMinute"] = 3,
+            ["burstIntervalMinMs"] = 1_500,
+            ["burstIntervalMaxMs"] = 5_000,
+            ["gapBaseMs"] = 1_200,
+            ["gapPerCharMs"] = 30,
+            ["maxMessageChars"] = 500,
+        }),
+    ];
+}
+
 // 角色列表（/api/roles）。
 public sealed class RoleListResponse
 {
