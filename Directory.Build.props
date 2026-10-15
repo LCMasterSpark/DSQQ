@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Directory.Build.props —— 解决方案级共享构建属性
+  ─────────────────────────────────────────────────────────────
+  放在仓库根目录，MSBuild 会自动向上查找并应用到所有项目（src 与 tests 通吃）。
+  目的：把"工程规范"集中一处，避免每个 csproj 各写一份而漂移。
+-->
+<Project>
+
+  <PropertyGroup>
+    <!-- ── 语言与编译 ── -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 生成 XML 文档：公共 API 强制写注释（配合下面的 CS1591） -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- 禁止把 obj/bin 之外的中间产物散落；保留默认即可 -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- ── 版本与产品信息（发布到 GitHub 时会被 CI 覆盖 Version） ── -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Company>DSQQ</Company>
+    <Product>DSQQ —— QQ 桥接面板</Product>
+    <Authors>lenovo</Authors>
+    <Copyright>Copyright (c) 2026</Copyright>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+    <!-- 说明：本程序是使用方，不包含 SnowLuma / qq-bridge 的任何二进制 -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- ── 健壮性：把可疑代码从"警告"提升为"错误" ── -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors>nullable</WarningsAsErrors>
+    <WarningLevel>5</WarningLevel>
+    <!-- 公共成员缺少 XML 注释 → 警告，保证注释不流于形式 -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- ── 速度与体积：Release 打开优化，Debug 保证可调试 ── -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Optimize>true</Optimize>
+    <DebugType>portable</DebugType>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+</Project>

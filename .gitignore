@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────
+#  QQBridgePanel — .gitignore
+#  规范：只提交源码与工程配置；构建产物、IDE 本地状态、密钥一律不入库。
+# ─────────────────────────────────────────────────────────────
+
+# ── .NET 构建产物 ──
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.binlog
+
+# ── 发布产物（由 CI 生成 Release 资产，不入库）──
+publish/
+artifacts/
+*.nupkg
+*.snupkg
+
+# ── Visual Studio / Rider / VS Code ──
+.vs/
+.vscode/
+.idea/
+*.DotSettings.user
+*.VC.db
+*.VC.VC.opendb
+
+# ── Test / coverage ──
+[Tt]est[Rr]esult*/
+TestResults/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+
+# ── NuGet ──
+packages/
+*.nuget.props
+*.nuget.targets
+
+# ── 本程序自身的运行时数据（绝不入库）──
+# 这些是用户机器上的实际运行数据，可能含聊天内容与令牌
+*.log
+!docs/**/*.log
+appsettings.local.json
+config.local.json
+secrets.json
+
+# ── 凭据与敏感文件（硬兜底）──
+*.pfx
+*.p12
+*.key
+*.pem
+!docs/**/*.pem
+.env
+.env.*
+
+# ── 操作系统杂项 ──
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk

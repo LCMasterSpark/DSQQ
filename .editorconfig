@@ -1,0 +1,109 @@
+# ─────────────────────────────────────────────────────────────
+#  QQBridgePanel — .editorconfig
+#  统一代码风格与静态分析级别；VS / Rider / dotnet format 都会读取本文件。
+# ─────────────────────────────────────────────────────────────
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+# ── Markdown / YAML / JSON：保持 LF，避免 diff 噪声 ──
+[*.{md,yml,yaml,json,jsonc}]
+end_of_line = lf
+indent_size = 2
+trim_trailing_whitespace = false
+
+[*.{csproj,props,targets,slnx,xaml}]
+indent_size = 2
+
+[*.{cmd,bat}]
+end_of_line = crlf
+
+# ─────────────────────────────────────────────────────────────
+#  C# 语言与格式规则
+# ─────────────────────────────────────────────────────────────
+[*.cs]
+indent_size = 4
+
+# using 排序：System 优先，其余按字母序
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# ── this. 与语言关键字 ──
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
+dotnet_style_predefined_type_for_member_access = true:suggestion
+
+# ── 现代化语法偏好 ──
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_readonly_field = true:suggestion
+dotnet_style_require_accessibility_modifiers = always:warning
+csharp_prefer_braces = true:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_using_directive_placement = outside_namespace:warning
+
+# ── 可空性：本项目启用 Nullable，必须显式表达意图 ──
+csharp_style_throw_expression = true:suggestion
+csharp_style_conditionally_dead_code_is_expression = true:suggestion
+dotnet_diagnostic.CS8618.severity = warning
+
+# ── 命名规范 ──
+dotnet_naming_rule.interfaces_start_with_i.severity = warning
+dotnet_naming_rule.interfaces_start_with_i.symbols = interfaces
+dotnet_naming_rule.interfaces_start_with_i.style = i_prefixed
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.i_prefixed.required_prefix = I
+dotnet_naming_style.i_prefixed.capitalization = pascal_case
+
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+dotnet_naming_rule.async_methods_end_with_async.severity = suggestion
+dotnet_naming_rule.async_methods_end_with_async.symbols = async_methods
+dotnet_naming_rule.async_methods_end_with_async.style = end_with_async
+dotnet_naming_symbols.async_methods.applicable_kinds = method
+dotnet_naming_symbols.async_methods.applicable_accessibilities = *
+dotnet_naming_symbols.async_methods.required_modifiers = async
+dotnet_naming_style.end_with_async.required_suffix = Async
+dotnet_naming_style.end_with_async.capitalization = pascal_case
+
+# ─────────────────────────────────────────────────────────────
+#  静态分析：把"健壮性"变成编译期约束
+#  （用户要求"注意测试与代码健壮性"，这里用分析器强制）
+# ─────────────────────────────────────────────────────────────
+dotnet_analyzer_diagnostic.category-Security.severity = warning
+dotnet_analyzer_diagnostic.category-Reliability.severity = warning
+dotnet_analyzer_diagnostic.category-Performance.severity = suggestion
+dotnet_analyzer_diagnostic.category-CodeQuality.severity = suggestion
+
+# 明显易错点提升为警告/错误
+dotnet_diagnostic.CA2007.severity = none      # WPF/DI 场景下 ConfigureAwait 非必需
+dotnet_diagnostic.CA1031.severity = none      # 捕获通用异常在本程序（进程/网络探测）是必要的
+dotnet_diagnostic.CA1303.severity = none      # 不做本地化资源化（本项目为中文单语言工具）
+dotnet_diagnostic.CA1062.severity = warning   # 公共 API 必须校验参数
+dotnet_diagnostic.CA2016.severity = warning   # Task 结果必须被观察
+
+[*.{Tests.cs,Test.cs}]
+dotnet_diagnostic.CA1707.severity = none      # 测试方法名允许下划线
+dotnet_diagnostic.CA2007.severity = none

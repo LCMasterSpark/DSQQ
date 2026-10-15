@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────
+#  DSQQ — .gitattributes
+#  统一行尾，避免"同一文件在不同机器上整份 diff"的噪声。
+#  （同类问题在依赖项目 qq-bridge 上真实发生过：仓库无 .gitattributes，
+#    打包后启动脚本全变成 LF，破坏了要求 CRLF 的注册期断言。）
+#
+#  本仓库为 Windows 专用桌面程序，故文本文件统一 CRLF，
+#  与 .editorconfig 的 end_of_line = crlf 保持一致。
+# ─────────────────────────────────────────────────────────────
+
+# 默认：自动判定文本文件
+* text=auto
+
+# ── 源码与工程配置：CRLF ──
+*.cs           text eol=crlf diff=csharp
+*.csproj       text eol=crlf
+*.props        text eol=crlf
+*.targets      text eol=crlf
+*.slnx         text eol=crlf
+*.xaml         text eol=crlf
+*.manifest     text eol=crlf
+
+# ── 脚本：Windows 批处理必须 CRLF（cmd.exe 解析多行块依赖它）──
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+*.ps1          text eol=crlf
+
+# ── 文档与配置 ──
+*.md           text eol=crlf
+*.json         text eol=crlf
+*.yml          text eol=crlf
+*.yaml         text eol=crlf
+
+# ── 无扩展名的配置文件也要显式指定（否则沿用仓库默认）──
+.editorconfig  text eol=crlf
+.gitignore     text eol=crlf
+.gitattributes text eol=crlf
+
+# ── 二进制：禁止任何行尾/编码转换 ──
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gif          binary
+*.ico          binary
+*.cur          binary
+*.ttf          binary
+*.zip          binary
+*.nupkg        binary
+
+# ── 生成物：不参与 diff 统计（本就不入库，这里只是兜底）──
+*.dll          binary
+*.exe          binary
+*.pdb          binary
