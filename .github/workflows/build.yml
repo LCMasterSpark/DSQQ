@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    # 必须是 Windows：项目目标框架是 net10.0-windows 且使用 WPF，
+    # Linux/macOS runner 无法构建（会报 NETSDK1100）。
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 还原依赖
+        run: dotnet restore DSQQ.slnx
+
+      - name: 构建
+        run: dotnet build DSQQ.slnx --configuration Release --no-restore
+
+      - name: 单元测试
+        run: dotnet test DSQQ.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+      - name: 上传测试结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/test-results.trx'
+          if-no-files-found: ignore

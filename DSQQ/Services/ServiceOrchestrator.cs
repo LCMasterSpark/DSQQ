@@ -112,9 +112,10 @@ public sealed class ServiceOrchestrator(AppConfig config)
                         environment["SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD"] = _config.SnowLuma.BootstrapPassword;
                     }
 
-                    var launched = ProcessLauncher.StartBatch(
+                    // 用 SnowLuma 自带的 node.exe 直接启动，不走 launcher.bat：
+                    // 官方 bat 依赖 PATH 上有 node，机器上没装全局 Node 时会静默失败。
+                    var launched = ProcessLauncher.StartSnowLuma(
                         _config.SnowLuma.InstallDirectory,
-                        _config.SnowLuma.LauncherFileName,
                         environment);
 
                     if (!launched.Succeeded)

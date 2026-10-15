@@ -65,6 +65,38 @@ public static class ProcessLauncher
         }
     }
 
+    // 启动 SnowLuma。
+    // 参数 installDirectory：SnowLuma 安装目录。
+    // 参数 environment：额外环境变量；可为 null。
+    // 返回：启动结果。
+    //
+    // 优先用安装目录里自带的 node.exe 直接执行 index.mjs，而**不走 launcher.bat**。
+    // 原因：官方 launcher.bat 里写的是裸 `node` 命令，依赖 PATH 上存在 node ——
+    // Windows 的 cmd 不会从当前目录查找可执行文件，因此机器上没装全局 Node 时
+    // 脚本第一步就失败退出（这就是"一键启动对 SnowLuma 不管用"的原因）。
+    // 自带运行时本来就在安装目录里，直接用它既绕开 PATH 依赖，也避免版本不一致。
+    public static LauncherResult StartSnowLuma(
+        string installDirectory,
+        IReadOnlyDictionary<string, string>? environment = null)
+    {
+        if (string.IsNullOrWhiteSpace(installDirectory) || !Directory.Exists(installDirectory))
+        {
+            return LauncherResult.Failed($"目录不存在：{installDirectory}");
+        }
+
+        var bundledNode = Path.Combine(installDirectory, "node.exe");
+        var entry = Path.Combine(installDirectory, "index.mjs");
+
+        if (File.Exists(bundledNode) && File.Exists(entry))
+        {
+            return StartScript(bundledNode, "index.mjs", installDirectory, environment);
+        }
+
+        // 兜底：没有自带运行时（或入口缺失）时退回 launcher.bat，
+        // 至少让用户看到官方的失败提示，而不是静默无反应。
+        return StartBatch(installDirectory, "launcher.bat", environment);
+    }
+
     // 用指定的可执行文件启动一个脚本（用于 qq-bridge：node.exe src/bridge.js）。
     // 参数 executablePath：可执行文件绝对路径（通常为 node.exe）。
     // 参数 scriptRelativePath：脚本相对路径，例如 src\bridge.js。

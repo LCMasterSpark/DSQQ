@@ -1,0 +1,111 @@
+name: release
+
+# 打 tag 时构建并发布：先把产物打成 zip 再上传，
+# 避免直接上传目录导致 Release 里散落一堆文件。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（例如 0.1.0）'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    # 与 build 工作流同理：WPF + net10.0-windows 只能在 Windows 上构建。
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 解析版本号
+        id: version
+        shell: pwsh
+        run: |
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            # 去掉 tag 前缀的 v，例如 v0.1.0 → 0.1.0
+            $v = '${{ github.ref_name }}'.TrimStart('v')
+          } else {
+            $v = '${{ github.event.inputs.version }}'
+          }
+          "value=$v" >> $env:GITHUB_OUTPUT
+
+      - name: 还原
+        run: dotnet restore DSQQ.slnx
+
+      - name: 测试
+        run: dotnet test DSQQ.slnx --configuration Release --logger "trx;LogFileName=test-results.trx"
+
+      # framework-dependent：体积小，但目标机需安装 .NET 10 桌面运行时。
+      - name: 发布（framework-dependent）
+        run: >
+          dotnet publish DSQQ/DSQQ.csproj
+          --configuration Release
+          --no-restore
+          --output publish/framework-dependent
+          -p:Version=${{ steps.version.outputs.value }}
+
+      # self-contained：体积大，但目标机无需预装运行时。
+      - name: 发布（self-contained 单文件）
+        run: >
+          dotnet publish DSQQ/DSQQ.csproj
+          --configuration Release
+          --no-restore
+          --runtime win-x64
+          --self-contained true
+          --output publish/self-contained
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.version.outputs.value }}
+
+      - name: 打包（含使用说明）
+        shell: pwsh
+        run: |
+          $readme = @'
+          DSQQ —— QQ 桥接面板
+          ====================
+
+          两个包任选其一：
+
+          · DSQQ-framework-dependent：体积小，需先安装 .NET 10 桌面运行时
+            https://dotnet.microsoft.com/download/dotnet/10.0
+          · DSQQ-self-contained：体积较大，免安装运行时，解压后直接运行 DSQQ.exe
+
+          首次运行会在 %APPDATA%\DSQQ\config.json 生成配置。
+          本程序是 SnowLuma 与 qq-bridge 的使用方，不包含其任何二进制；
+          不代为实现协议同意或扫码登录。
+          '@
+          $readme | Out-File -FilePath publish/使用说明.txt -Encoding utf8
+
+          Compress-Archive -Path publish/framework-dependent/* -DestinationPath "publish/DSQQ-${{ steps.version.outputs.value }}-win-x64-framework-dependent.zip" -Force
+          Compress-Archive -Path publish/self-contained/*      -DestinationPath "publish/DSQQ-${{ steps.version.outputs.value }}-win-x64-self-contained.zip" -Force
+          Get-ChildItem publish/*.zip | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSQQ-${{ steps.version.outputs.value }}
+          path: publish/*.zip
+
+      - name: 创建 Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
