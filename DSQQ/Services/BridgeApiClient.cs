@@ -129,6 +129,33 @@ public sealed class BridgeApiClient : IDisposable
     public Task<ModelSelection?> GetModelSelectionAsync(CancellationToken cancellationToken = default)
         => GetAsync<ModelSelection>("/api/dsh/model-selection", cancellationToken);
 
+    // 读取模型目录：可选的模型清单与推理强度说明（切换下拉框的数据源）。
+    public Task<DshModelCatalog?> GetModelCatalogAsync(CancellationToken cancellationToken = default)
+        => GetAsync<DshModelCatalog>("/api/dsh/model", cancellationToken);
+
+    // 保存模型选择。
+    // 参数 enabled：是否启用模型接管。
+    // 参数 model：模型标识；enabled 为 true 时必填且要匹配 [A-Za-z0-9._:-]{1,64}。
+    // 参数 reasoningEffort：思考强度；enabled 为 true 时必须是 low / high / max 之一。
+    // 返回：是否保存成功。
+    //
+    // 注意端点是 model-selection 而不是 model —— 后者是 GET（读目录），
+    // 且桥接在 enabled=true 时要求 model 与 reasoningEffort **同时**给出，缺一即 400。
+    public Task<bool> SaveModelSelectionAsync(
+        bool enabled,
+        string model,
+        string reasoningEffort,
+        CancellationToken cancellationToken = default)
+    {
+        if (enabled)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(model);
+            ArgumentException.ThrowIfNullOrWhiteSpace(reasoningEffort);
+        }
+
+        return PostAsync("/api/dsh/model-selection", new { enabled, model, reasoningEffort }, cancellationToken);
+    }
+
     // 切换运行模式。
     // 参数 mode：目标模式（chat / closed-agent / reserved / reserved2）。
     // 参数 cancellationToken：取消标记。

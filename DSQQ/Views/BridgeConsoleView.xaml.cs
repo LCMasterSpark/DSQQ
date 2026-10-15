@@ -44,6 +44,9 @@ public partial class BridgeConsoleView : UserControl
     // 上次载入的配额。用于在保存前提示"上限提示语会被清空"这类整体覆盖导致的数据丢失。
     private QuotaConfig? _quotaBaseline;
 
+    // 上次载入的模型与强度，用于判断是否真的改过（未改就不发请求）。
+    private ModelSelection? _modelBaseline;
+
     // 初始化页面。
     // 参数 services：应用服务宿主。
     // 异常 ArgumentNullException：为 null。
@@ -238,8 +241,10 @@ public partial class BridgeConsoleView : UserControl
         {
             _sessions.Add(session);
         }
-        // 模型与推理强度：可选档位由桥接按 DSH 实际公布的能力下发。
+        // 模型与推理强度：可选档位与模型清单都由桥接按 DSH 实际公布的能力下发。
         var selection = await _client.GetModelSelectionAsync();
+        var catalog = await _client.GetModelCatalogAsync();
+
         if (selection is not null)
         {
             var options = selection.Options.Count > 0 ? selection.Options : new List<string> { "low", "high", "max" };
@@ -247,8 +252,43 @@ public partial class BridgeConsoleView : UserControl
             var current = ChooseEffort(selection.ReasoningEffort);
             EffortCombo.SelectedItem = options.FirstOrDefault(o => string.Equals(o, current, StringComparison.OrdinalIgnoreCase))
                 ?? options.FirstOrDefault();
-            ModelText.Text += $" / 模型 {selection.Provider}/{selection.Model}";
+            ModelText.Text = $"当前 {selection.Provider}/{selection.Model}";   // 赋值而非 +=，否则每次刷新都在后面接一截
         }
+
+        if (catalog is not null && catalog.Models.Count > 0)
+        {
+            ModelCombo.ItemsSource = catalog.Models;
+            ModelCombo.SelectedItem = catalog.Models
+                .FirstOrDefault(m => string.Equals(m.Id, catalog.Model, StringComparison.OrdinalIgnoreCase))
+                ?? catalog.Models[0];
+        }
+
+        _modelBaseline = selection;
+        UpdateModelHint();
+    }
+
+    // 下拉框变化：只更新提示，不自动提交（避免误点就改掉全局默认）。
+    private void OnModelChanged(object sender, SelectionChangedEventArgs e) => UpdateModelHint();
+
+    private void OnEffortChanged(object sender, SelectionChangedEventArgs e) => UpdateModelHint();
+
+    // 提示当前选择与是否未保存。两处都选好才做比对，未选好时不打扰。
+    private void UpdateModelHint()
+    {
+        var model = ModelCombo.SelectedItem as DshModelOption;
+        var effort = EffortCombo.SelectedItem as string;
+
+        if (model is null || string.IsNullOrWhiteSpace(effort) || _modelBaseline is null)
+        {
+            return;
+        }
+
+        var changed = !string.Equals(model.Id, _modelBaseline.Model, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(effort, _modelBaseline.ReasoningEffort, StringComparison.OrdinalIgnoreCase);
+
+        ModelText.Text = changed
+            ? $"当前 {_modelBaseline.Provider}/{_modelBaseline.Model} · {_modelBaseline.ReasoningEffort} → 待保存 {model.Id} · {effort}"
+            : $"当前 {_modelBaseline.Provider}/{_modelBaseline.Model} · {_modelBaseline.ReasoningEffort}";
     }
 
     // 切换运行模式。
@@ -265,10 +305,17 @@ public partial class BridgeConsoleView : UserControl
         StatusText.Text = ok ? $"已切换到 {Modes[index].Label}" : "切换模式失败（详见桥接日志）。";
     }
 
-    // 保存推理强度。
-    // 保存推理强度（写入 DSH 全局默认，对已有会话于下一条消息生效）。
-    private async void OnApplyEffortClick(object sender, RoutedEventArgs e)
+    // 保存模型与推理强度（写入 DSH 全局默认，对已有会话于下一条消息生效）。
+    // 桥接在 enabled=true 时要求 model 与 reasoningEffort 同时有效，所以这里一次提交两者。
+    private async void OnSaveModelClick(object sender, RoutedEventArgs e)
     {
+        var model = ModelCombo.SelectedItem as DshModelOption;
+        if (model is null)
+        {
+            StatusText.Text = "请先选择模型。";
+            return;
+        }
+
         var effort = ChooseEffort(EffortCombo.SelectedItem?.ToString());
         if (effort is null)
         {
@@ -276,10 +323,25 @@ public partial class BridgeConsoleView : UserControl
             return;
         }
 
-        var ok = await _client.SetReasoningEffortAsync(effort);
-        StatusText.Text = ok
-            ? $"推理强度已设为 {effort}（下一条消息生效；同时写入 DSH 全局默认）"
-            : "设置推理强度失败：请检查桥接是否在运行。";
+        var unchanged = _modelBaseline is not null
+            && string.Equals(model.Id, _modelBaseline.Model, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(effort, _modelBaseline.ReasoningEffort, StringComparison.OrdinalIgnoreCase);
+
+        if (unchanged)
+        {
+            StatusText.Text = "与当前设置相同，无需保存。";
+            return;
+        }
+
+        var ok = await _client.SaveModelSelectionAsync(true, model.Id, effort);
+        if (!ok)
+        {
+            StatusText.Text = "保存失败：桥接未接受（模型标识或强度档位不合法）。";
+            return;
+        }
+
+        StatusText.Text = $"已保存：{model.Id} · {effort}（下一条消息生效）";
+        await LoadTokensAsync();   // 重新取回桥接侧最终值（模型目录与单价都在这条路径里刷新）
     }
 
     // 把界面文本映射为可保存的强度档位；非法输入返回 null。

@@ -318,6 +318,7 @@ public sealed class QuotaConfig
 }
 
 // 桥接 /api/dsh/model-selection 的响应。
+// 只反映"当前选中"，不含可选项 —— 可选项在 DshModelCatalog 里。
 public sealed class ModelSelection
 {
     // 是否启用模型接管。
@@ -339,6 +340,58 @@ public sealed class ModelSelection
     // 可选推理强度。
     [JsonPropertyName("options")]
     public List<string> Options { get; set; } = [];
+}
+
+// 桥接 /api/dsh/model 的响应：比 model-selection 多了**可选项与说明**，
+// 切换用的下拉框数据来自这里（model-selection 只说明当前选中了什么）。
+public sealed class DshModelCatalog
+{
+    [JsonPropertyName("provider")]
+    public string? Provider { get; set; }
+
+    [JsonPropertyName("model")]
+    public string? Model { get; set; }
+
+    [JsonPropertyName("reasoningEffort")]
+    public string? ReasoningEffort { get; set; }
+
+    // 可选推理强度（按桥接给定顺序）。
+    [JsonPropertyName("options")]
+    public List<string> Options { get; set; } = [];
+
+    // 各推理强度的中文名称与说明。
+    [JsonPropertyName("labels")]
+    public Dictionary<string, DshEffortLabel> Labels { get; set; } = [];
+
+    // 可选模型。
+    [JsonPropertyName("models")]
+    public List<DshModelOption> Models { get; set; } = [];
+}
+
+// 推理强度的一项说明。
+public sealed class DshEffortLabel
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+}
+
+// 可选模型。
+public sealed class DshModelOption
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    // 下拉框显示文本：模型名 + 标识，方便核对。
+    public string Display => string.IsNullOrWhiteSpace(Name) ? Id : $"{Name}（{Id}）";
 }
 
 // 活跃度与发送节奏（/api/config/activity）。
