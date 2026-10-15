@@ -276,6 +276,7 @@
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -283,7 +284,7 @@
                     <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.75"
                                Text="所有时间项单位均为毫秒（1000 = 1 秒）。保存为增量提交，只改动过的项会写入；未改动的由桥接保持现状。范围与联动关系由桥接校验（例如最短潜水不能大于最长潜水）。" />
 
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,10,0,0">
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
                         <TextBlock Text="预设" VerticalAlignment="Center" Opacity="0.75" />
                         <Button x:Name="PresetHighButton" Content="高频" Width="70" Height="28" Margin="8,0,0,0"
                                 Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnPresetHighClick" />
@@ -295,7 +296,7 @@
                                    Text="点一下即把整组参数写入（会先确认，覆盖当前值）" />
                     </StackPanel>
 
-                    <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="2" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <!-- 分组一：唤醒频率 -->
                             <Border Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
@@ -307,8 +308,8 @@
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" MinWidth="230" />
-                                            <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -333,7 +334,7 @@
 
                                         <TextBlock Grid.Row="3" Grid.Column="0" Text="每分钟最多唤醒" VerticalAlignment="Center" Margin="0,4,10,4" />
                                         <TextBox Grid.Row="3" Grid.Column="1" x:Name="MaxWakeMinuteBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="3" Grid.Column="2" Text="0 ~ 100" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBlock Grid.Row="3" Grid.Column="2" Text="0 ~ 100" VerticalAlignment="Center" Margin="14,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="4" Grid.Column="0" Text="睡前观察窗口" VerticalAlignment="Center" Margin="0,4,10,4" />
                                         <TextBox Grid.Row="4" Grid.Column="1" x:Name="PreSleepWaitBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
@@ -358,8 +359,8 @@
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" MinWidth="230" />
-                                            <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -413,7 +414,7 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
                         <Button x:Name="ReloadActivityButton" Content="重新载入" Width="100" Height="30"
                                 Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnReloadActivityClick" />
                         <Button x:Name="SaveActivityButton" Content="保存改动" Width="100" Height="30" Margin="8,0,0,0"

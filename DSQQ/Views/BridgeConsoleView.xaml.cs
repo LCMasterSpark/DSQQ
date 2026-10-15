@@ -88,6 +88,36 @@ public partial class BridgeConsoleView : UserControl
     // 重新载入全部数据。
     private async void OnReloadClick(object sender, RoutedEventArgs e) => await ReloadAsync();
 
+    // 读取桥接状态，失败时短间隔重试几次。
+    //
+    // 为什么需要：DSQQ 与 SnowLuma / 桥接常被一起启动，桥接要等端口就绪才可访问，
+    // 而本页在窗口 Loaded 时就会拉数据。若一次失败就放弃，界面会停在"服务未启动"，
+    // 且所有下拉框保持为空 —— 用户看到的是"下拉展不开"，其实只是没数据。
+    // 总耗时不长（约 6 秒），成功即返回，不会拖慢正常路径。
+    private async Task<Models.BridgeStatus?> GetStatusWithRetryAsync()
+    {
+        const int Attempts = 4;
+
+        for (var attempt = 1; attempt <= Attempts; attempt++)
+        {
+            var status = await _client.GetStatusAsync();
+            if (status is not null)
+            {
+                return status;
+            }
+
+            if (attempt == Attempts)
+            {
+                break;
+            }
+
+            StatusText.Text = $"桥接尚未就绪，正在重试（{attempt}/{Attempts - 1}）…";
+            await Task.Delay(TimeSpan.FromSeconds(1 + attempt));
+        }
+
+        return null;
+    }
+
     // 拉取桥接的各类配置与状态。
     private async Task ReloadAsync()
     {
@@ -98,11 +128,14 @@ public partial class BridgeConsoleView : UserControl
         // 每次重载前清空旧数据，避免叠加。
         StatusText.Text = "正在载入…";
 
-        var status = await _client.GetStatusAsync();
+        // 首次探测带重试：DSQQ 常与 SnowLuma / 桥接一起启动，桥接要等端口就绪，
+        // 而这一页在窗口 Loaded 时就会拉取。一次失败就放弃的话，界面会停在
+        // "服务未启动"并把所有下拉框留空（表现为"下拉展不开"），而实际上桥接稍后就绪。
+        var status = await GetStatusWithRetryAsync();
         if (status is null)
         {
             StatusText.Text = $"无法读取桥接（{_services.Endpoints.BridgeConsole}）—— 服务未启动或端口不对。";
-            HintText.Text = "提示：可在「服务管理」页启动桥接，或在「设置」页修正端口。";
+            HintText.Text = "提示：可在「服务管理」页启动桥接，或在「设置」页修正端口；桥接就绪后点「重新载入」即可。";
             return;
         }
 
