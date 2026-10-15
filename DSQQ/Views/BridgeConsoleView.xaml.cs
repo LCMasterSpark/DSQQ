@@ -15,16 +15,12 @@ using Button = System.Windows.Controls.Button;
 
 namespace DSQQ.Views;
 
-/// <summary>
-/// 桥接控制台页：模式、白名单、人设、配额、令牌与花费。
-/// </summary>
-/// <remarks>
-/// 全部通过桥接的 HTTP API 完成，不内嵌网页。
-/// 保存类操作即时生效；改变端口等配置项需要重启桥接（页面上另有提示）。
-/// </remarks>
+// 桥接控制台页：模式、白名单、人设、配额、令牌与花费。
+// 全部通过桥接的 HTTP API 完成，不内嵌网页。
+// 保存类操作即时生效；改变端口等配置项需要重启桥接（页面上另有提示）。
 public partial class BridgeConsoleView : UserControl
 {
-    /// <summary>可选运行模式（与桥接 /api/mode 接受的值一致）。</summary>
+    // 可选运行模式（与桥接 /api/mode 接受的值一致）。
     private static readonly (string Value, string Label)[] Modes =
     [
         ("chat", "聊天（白名单群 + 私聊）"),
@@ -38,12 +34,12 @@ public partial class BridgeConsoleView : UserControl
     private readonly ObservableCollection<BridgeSessionEntry> _sessions = [];
     private BridgeApiClient _client;
 
-    /// <summary>最近一次会话快照（供状态应用时复用，避免重复请求）。</summary>
+    // 最近一次会话快照（供状态应用时复用，避免重复请求）。
     private IReadOnlyList<BridgeSessionEntry> _sessionsSnapshot = [];
 
-    /// <summary>初始化页面。</summary>
-    /// <param name="services">应用服务宿主。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="services"/> 为 <c>null</c>。</exception>
+    // 初始化页面。
+    // 参数 services：应用服务宿主。
+    // 异常 ArgumentNullException：为 null。
     public BridgeConsoleView(AppServices services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -58,19 +54,19 @@ public partial class BridgeConsoleView : UserControl
         Loaded += async (_, _) => await ReloadAsync();
     }
 
-    /// <summary>群列表项：包一层是为了给多选状态与显示文本留位置。</summary>
-    /// <param name="Id">群号。</param>
-    /// <param name="Name">群名。</param>
+    // 群列表项：包一层是为了给多选状态与显示文本留位置。
+    // 参数 Id：群号。
+    // 参数 Name：群名。
     public sealed record GroupItem(string Id, string Name)
     {
-        /// <summary>界面显示文本。</summary>
+        // 界面显示文本。
         public string Display => $"{Name}（{Id}）";
     }
 
-    /// <summary>重新载入全部数据。</summary>
+    // 重新载入全部数据。
     private async void OnReloadClick(object sender, RoutedEventArgs e) => await ReloadAsync();
 
-    /// <summary>拉取桥接的各类配置与状态。</summary>
+    // 拉取桥接的各类配置与状态。
     private async Task ReloadAsync()
     {
         // 配置可能在设置页被改过（端口变化），因此每次重新载入都重建客户端。
@@ -99,7 +95,7 @@ public partial class BridgeConsoleView : UserControl
         HintText.Text = $"桥接地址：{_services.Endpoints.BridgeConsole}";
     }
 
-    /// <summary>应用运行状态：模式、会话、模型。</summary>
+    // 应用运行状态：模式、会话、模型。
     private void ApplyStatus(BridgeStatus status)
     {
         var index = Array.FindIndex(Modes, m => m.Value == status.Mode);
@@ -115,7 +111,7 @@ public partial class BridgeConsoleView : UserControl
         ModelText.Text = $"DSH 就绪 {status.DshReady} / SnowLuma 连接 {snowLuma?.Connected} / 接收健康 {snowLuma?.Good}";
     }
 
-    /// <summary>载入白名单。</summary>
+    // 载入白名单。
     private async Task LoadWhitelistAsync()
     {
         var whitelist = await _client.GetWhitelistAsync();
@@ -128,7 +124,7 @@ public partial class BridgeConsoleView : UserControl
         WhitelistHintText.Text = $"管理员：{whitelist.OwnerQQ?.ToString() ?? "未设置"}";
     }
 
-    /// <summary>载入群列表并按当前白名单勾选。</summary>
+    // 载入群列表并按当前白名单勾选。
     private async Task LoadGroupsAsync()
     {
         var groups = await _client.GetGroupsAsync();
@@ -150,7 +146,7 @@ public partial class BridgeConsoleView : UserControl
         }
     }
 
-    /// <summary>载入人设。</summary>
+    // 载入人设。
     private async Task LoadPersonaAsync()
     {
         var response = await _client.GetPersonaAsync();
@@ -168,7 +164,7 @@ public partial class BridgeConsoleView : UserControl
         PersonaNoteText.Text = response.Note ?? string.Empty;
     }
 
-    /// <summary>载入配额。</summary>
+    // 载入配额。
     private async Task LoadQuotaAsync()
     {
         var quota = await _client.GetQuotaAsync();
@@ -187,7 +183,7 @@ public partial class BridgeConsoleView : UserControl
         TodayUsageText.Text = $"群 {quota.TodayGroup} 条 / 私聊 {quota.TodayPrivate} 条";
     }
 
-    /// <summary>载入 token 汇总与最近活动。</summary>
+    // 载入 token 汇总与最近活动。
     private async Task LoadTokensAsync()
     {
         var summary = await _client.GetTokenSummaryAsync();
@@ -229,7 +225,7 @@ public partial class BridgeConsoleView : UserControl
         }
     }
 
-    /// <summary>切换运行模式。</summary>
+    // 切换运行模式。
     private async void OnApplyModeClick(object sender, RoutedEventArgs e)
     {
         var index = ModeCombo.SelectedIndex;
@@ -243,8 +239,8 @@ public partial class BridgeConsoleView : UserControl
         StatusText.Text = ok ? $"已切换到 {Modes[index].Label}" : "切换模式失败（详见桥接日志）。";
     }
 
-    /// <summary>保存推理强度。</summary>
-    /// <summary>保存推理强度（写入 DSH 全局默认，对已有会话于下一条消息生效）。</summary>
+    // 保存推理强度。
+    // 保存推理强度（写入 DSH 全局默认，对已有会话于下一条消息生效）。
     private async void OnApplyEffortClick(object sender, RoutedEventArgs e)
     {
         var effort = ChooseEffort(EffortCombo.SelectedItem?.ToString());
@@ -260,7 +256,7 @@ public partial class BridgeConsoleView : UserControl
             : "设置推理强度失败：请检查桥接是否在运行。";
     }
 
-    /// <summary>把界面文本映射为可保存的强度档位；非法输入返回 null。</summary>
+    // 把界面文本映射为可保存的强度档位；非法输入返回 null。
     private static string? ChooseEffort(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -279,7 +275,7 @@ public partial class BridgeConsoleView : UserControl
         return null;
     }
 
-    /// <summary>保存白名单。</summary>
+    // 保存白名单。
     private async void OnSaveWhitelistClick(object sender, RoutedEventArgs e)
     {
         var allowPrivate = SplitLines(AllowPrivateBox.Text);
@@ -293,7 +289,7 @@ public partial class BridgeConsoleView : UserControl
             : "保存失败：请检查桥接是否在运行。";
     }
 
-    /// <summary>保存人设。</summary>
+    // 保存人设。
     private async void OnSavePersonaClick(object sender, RoutedEventArgs e)
     {
         var persona = new PersonaConfig
@@ -314,7 +310,7 @@ public partial class BridgeConsoleView : UserControl
             : "保存被拒绝：内容可能包含改写安全规则的意图，或桥接未运行。";
     }
 
-    /// <summary>保存配额。</summary>
+    // 保存配额。
     private async void OnSaveQuotaClick(object sender, RoutedEventArgs e)
     {
         if (!TryParseInt(GroupWarnBox.Text, out var groupWarn)
@@ -341,12 +337,12 @@ public partial class BridgeConsoleView : UserControl
         QuotaHintText.Text = ok ? "已保存（即时生效）" : "保存失败：请检查桥接是否在运行。";
     }
 
-    /// <summary>把多行文本拆成去空的列表。</summary>
+    // 把多行文本拆成去空的列表。
     private static List<string> SplitLines(string text) => text
         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .ToList();
 
-    /// <summary>宽松的整数解析：失败返回 false 而不抛异常。</summary>
+    // 宽松的整数解析：失败返回 false 而不抛异常。
     private static bool TryParseInt(string text, out int value)
         => int.TryParse(text.Trim(), out value);
 }

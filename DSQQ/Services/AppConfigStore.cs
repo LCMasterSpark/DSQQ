@@ -4,18 +4,12 @@ using DSQQ.Models;
 
 namespace DSQQ.Services;
 
-/// <summary>
-/// 应用配置的读写。
-/// </summary>
-/// <remarks>
-/// 健壮性约定（对应"注意代码健壮性"的要求）：
-/// <list type="bullet">
-/// <item><see cref="TryLoad"/> **永不抛异常**：文件缺失、JSON 损坏、字段类型不符都只是返回 <c>null</c>
-/// 并通过 <c>error</c> 说明原因，界面据此提示并退化到默认配置；</item>
-/// <item><see cref="Save"/> 采用"先写临时文件再替换"的方式，避免写一半断电/崩溃导致配置被截断；</item>
-/// <item>所有路径都可通过参数注入，便于单元测试使用临时目录，不污染真实用户配置。</item>
-/// </list>
-/// </remarks>
+// 应用配置的读写。
+// 健壮性约定（对应"注意代码健壮性"的要求）：
+// TryLoad 永不抛异常：文件缺失、JSON 损坏、字段类型不符都只是返回 null
+// 并通过 error 说明原因，界面据此提示并退化到默认配置；
+// Save 采用"先写临时文件再替换"的方式，避免写一半断电/崩溃导致配置被截断；
+// 所有路径都可通过参数注入，便于单元测试使用临时目录，不污染真实用户配置。
 public static class AppConfigStore
 {
     private const string FileName = "config.json";
@@ -30,24 +24,18 @@ public static class AppConfigStore
         AllowTrailingCommas = true,
     };
 
-    /// <summary>
-    /// 配置目录：<c>%APPDATA%\DSQQ</c>（随用户漫游，不写入程序目录）。
-    /// </summary>
+    // 配置目录：%APPDATA%\DSQQ（随用户漫游，不写入程序目录）。
     public static string DefaultDirectory { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "DSQQ");
 
-    /// <summary>
-    /// 默认配置文件路径：<c>%APPDATA%\DSQQ\config.json</c>。
-    /// </summary>
+    // 默认配置文件路径：%APPDATA%\DSQQ\config.json。
     public static string DefaultPath { get; } = Path.Combine(DefaultDirectory, FileName);
 
-    /// <summary>
-    /// 尝试读取配置。
-    /// </summary>
-    /// <param name="path">配置文件路径；为 <c>null</c> 时使用 <see cref="DefaultPath"/>。</param>
-    /// <param name="error">读取失败原因；成功时为 <c>null</c>。</param>
-    /// <returns>读取到的配置；文件不存在或内容不可用时为 <c>null</c>。</returns>
+    // 尝试读取配置。
+    // 参数 path：配置文件路径；为 null 时使用 DefaultPath。
+    // 参数 error：读取失败原因；成功时为 null。
+    // 返回：读取到的配置；文件不存在或内容不可用时为 null。
     public static AppConfig? TryLoad(string? path, out string? error)
     {
         var target = path ?? DefaultPath;
@@ -85,20 +73,16 @@ public static class AppConfigStore
         }
     }
 
-    /// <summary>
-    /// 使用默认路径读取配置。
-    /// </summary>
-    /// <param name="error">读取失败原因；成功时为 <c>null</c>。</param>
-    /// <returns>读取到的配置；不可用时为 <c>null</c>。</returns>
+    // 使用默认路径读取配置。
+    // 参数 error：读取失败原因；成功时为 null。
+    // 返回：读取到的配置；不可用时为 null。
     public static AppConfig? TryLoad(out string? error) => TryLoad(null, out error);
 
-    /// <summary>
-    /// 保存配置（原子写：临时文件 + 替换）。
-    /// </summary>
-    /// <param name="config">要保存的配置。</param>
-    /// <param name="path">目标路径；为 <c>null</c> 时使用 <see cref="DefaultPath"/>。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="config"/> 为 <c>null</c>。</exception>
-    /// <exception cref="IOException">目录或文件不可写。</exception>
+    // 保存配置（原子写：临时文件 + 替换）。
+    // 参数 config：要保存的配置。
+    // 参数 path：目标路径；为 null 时使用 DefaultPath。
+    // 异常 ArgumentNullException：为 null。
+    // 异常 IOException：目录或文件不可写。
     public static void Save(AppConfig config, string? path = null)
     {
         ArgumentNullException.ThrowIfNull(config);

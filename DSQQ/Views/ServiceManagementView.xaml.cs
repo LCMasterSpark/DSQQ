@@ -6,28 +6,20 @@ using DSQQ.Services;
 
 namespace DSQQ.Views;
 
-/// <summary>
-/// 服务管理页：一键启动、分级停止、端口与 PID 一览。
-/// </summary>
-/// <remarks>
-/// 交互约定：
-/// <list type="bullet">
-/// <item>任何耗时的启动/停止操作期间都禁用按钮并显示进度条，
-/// 避免用户连点造成重复拉起进程（桥接有单实例锁，会直接拒绝启动）；</item>
-/// <item>所有结果都追加到"操作记录"，而不是只弹一次对话框 ——
-/// 启动是分步长的流程，用户需要回看每一步的结论。</item>
-/// </list>
-/// </remarks>
+// 服务管理页：一键启动、分级停止、端口与 PID 一览。
+// 交互约定：
+// 任何耗时的启动/停止操作期间都禁用按钮并显示进度条，
+// 避免用户连点造成重复拉起进程（桥接有单实例锁，会直接拒绝启动）；
+// 所有结果都追加到"操作记录"，而不是只弹一次对话框 ——
+// 启动是分步长的流程，用户需要回看每一步的结论。
 public partial class ServiceManagementView : UserControl
 {
     private readonly AppServices _services;
     private readonly ObservableCollection<PortRow> _portRows = [];
 
-    /// <summary>
-    /// 初始化服务管理页。
-    /// </summary>
-    /// <param name="services">应用服务宿主。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="services"/> 为 <c>null</c>。</exception>
+    // 初始化服务管理页。
+    // 参数 services：应用服务宿主。
+    // 异常 ArgumentNullException：为 null。
     public ServiceManagementView(AppServices services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -42,15 +34,15 @@ public partial class ServiceManagementView : UserControl
         };
     }
 
-    /// <summary>端口行。</summary>
-    /// <param name="Service">服务名。</param>
-    /// <param name="Port">端口号。</param>
-    /// <param name="State">监听状态。</param>
-    /// <param name="Pid">监听进程 PID。</param>
-    /// <param name="Note">补充说明。</param>
+    // 端口行。
+    // 参数 Service：服务名。
+    // 参数 Port：端口号。
+    // 参数 State：监听状态。
+    // 参数 Pid：监听进程 PID。
+    // 参数 Note：补充说明。
     public sealed record PortRow(string Service, int Port, string State, string Pid, string Note);
 
-    /// <summary>一键启动。</summary>
+    // 一键启动。
     private async void OnStartAllClick(object sender, RoutedEventArgs e)
     {
         SetBusy(true);
@@ -78,7 +70,7 @@ public partial class ServiceManagementView : UserControl
         }
     }
 
-    /// <summary>只停止桥接（排查时最常用：改完 config.json 需要重启桥接）。</summary>
+    // 只停止桥接（排查时最常用：改完 config.json 需要重启桥接）。
     private async void OnStopBridgeClick(object sender, RoutedEventArgs e)
     {
         SetBusy(true);
@@ -101,7 +93,7 @@ public partial class ServiceManagementView : UserControl
         }
     }
 
-    /// <summary>只停止 SnowLuma。</summary>
+    // 只停止 SnowLuma。
     private async void OnStopSnowLumaClick(object sender, RoutedEventArgs e)
     {
         SetBusy(true);
@@ -124,7 +116,7 @@ public partial class ServiceManagementView : UserControl
         }
     }
 
-    /// <summary>全部停止：先停桥接（它依赖 SnowLuma），再停 SnowLuma。</summary>
+    // 全部停止：先停桥接（它依赖 SnowLuma），再停 SnowLuma。
     private async void OnStopAllClick(object sender, RoutedEventArgs e)
     {
         SetBusy(true);
@@ -152,16 +144,12 @@ public partial class ServiceManagementView : UserControl
         }
     }
 
-    /// <summary>刷新端口状态。</summary>
+    // 刷新端口状态。
     private async void OnRefreshPortsClick(object sender, RoutedEventArgs e) => await RefreshPortsAsync();
 
-    /// <summary>
-    /// 重新采集端口与 PID。
-    /// </summary>
-    /// <remarks>
-    /// OneBot 的两个端口是**约定值**（桥接与 SnowLuma 都按 3000/3001 通信），
-    /// 配置里没有它们；这里作为只读参考一并列出，方便排查"端口被顺延"的情况。
-    /// </remarks>
+    // 重新采集端口与 PID。
+    // OneBot 的两个端口是约定值（桥接与 SnowLuma 都按 3000/3001 通信），
+    // 配置里没有它们；这里作为只读参考一并列出，方便排查"端口被顺延"的情况。
     private async Task RefreshPortsAsync()
     {
         var config = _services.Config;
@@ -193,7 +181,7 @@ public partial class ServiceManagementView : UserControl
         }
     }
 
-    /// <summary>切换忙碌状态：禁用按钮避免重复触发。</summary>
+    // 切换忙碌状态：禁用按钮避免重复触发。
     private void SetBusy(bool busy)
     {
         StartAllButton.IsEnabled = !busy;
@@ -204,14 +192,14 @@ public partial class ServiceManagementView : UserControl
         BusyBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>追加一行操作记录，并保持滚动可见性由外部容器决定。</summary>
+    // 追加一行操作记录，并保持滚动可见性由外部容器决定。
     private void AppendLog(string message)
     {
         var prefix = LogText.Text == "（暂无）" ? string.Empty : LogText.Text + Environment.NewLine;
         LogText.Text = prefix + message;
     }
 
-    /// <summary>更新底部提示：显示桥接目录与日志路径，路径不存在时明确标出。</summary>
+    // 更新底部提示：显示桥接目录与日志路径，路径不存在时明确标出。
     private void UpdateHint()
     {
         var config = _services.Config;

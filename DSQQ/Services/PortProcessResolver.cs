@@ -3,35 +3,23 @@ using System.Globalization;
 
 namespace DSQQ.Services;
 
-/// <summary>
-/// 端口 → 监听进程 PID 的解析。
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>为什么必须有它</b>：停止服务时**绝不能**按镜像名杀进程。
-/// 本项目的 SnowLuma 与 qq-bridge 都使用 <c>node.exe</c>（SnowLuma 自带运行时），
-/// 一条 <c>taskkill /IM node.exe</c> 会把另一侧一起杀掉；桥接还会派生多个 MCP 子进程。
-/// 因此唯一安全的做法是：**从端口反查 PID，只杀那一个进程树**。
-/// 这条约束抄自依赖项目的运维脚本注释（<c>qq-bridge/dsh-stop.bat</c>），是踩过的坑。
-/// </para>
-/// <para>
-/// 实现上调用 <c>netstat -ano -p TCP</c> 并解析文本，而不是用
-/// <see cref="System.Net.NetworkInformation.IPGlobalProperties"/>：
-/// 后者能列出监听端口却**拿不到归属 PID**，而 PID 正是本类唯一要的东西。
-/// </para>
-/// </remarks>
+// 端口 → 监听进程 PID 的解析。
+// 为什么必须有它：停止服务时绝不能按镜像名杀进程。
+// 本项目的 SnowLuma 与 qq-bridge 都使用 node.exe（SnowLuma 自带运行时），
+// 一条 taskkill /IM node.exe 会把另一侧一起杀掉；桥接还会派生多个 MCP 子进程。
+// 因此唯一安全的做法是：从端口反查 PID，只杀那一个进程树。
+// 这条约束抄自依赖项目的运维脚本注释（qq-bridge/dsh-stop.bat），是踩过的坑。
+// 实现上调用 netstat -ano -p TCP 并解析文本，而不是用
+// System.Net.NetworkInformation.IPGlobalProperties：
+// 后者能列出监听端口却拿不到归属 PID，而 PID 正是本类唯一要的东西。
 public static class PortProcessResolver
 {
-    /// <summary>
-    /// 解析 <c>netstat -ano -p TCP</c> 的输出，找出监听指定端口的 PID。
-    /// </summary>
-    /// <param name="netstatOutput">netstat 的完整输出（可含表头与无关行）。</param>
-    /// <param name="port">目标端口。</param>
-    /// <returns>监听该端口的 PID；未找到时为 <c>null</c>。</returns>
-    /// <remarks>
-    /// 抽成纯函数是为了可测：真实 netstat 输出在不同 Windows 版本、不同区域设置下
-    /// 的列宽与状态字面量会有差异，用真实样本做用例比连机器跑更可靠。
-    /// </remarks>
+    // 解析 netstat -ano -p TCP 的输出，找出监听指定端口的 PID。
+    // 参数 netstatOutput：netstat 的完整输出（可含表头与无关行）。
+    // 参数 port：目标端口。
+    // 返回：监听该端口的 PID；未找到时为 null。
+    // 抽成纯函数是为了可测：真实 netstat 输出在不同 Windows 版本、不同区域设置下
+    // 的列宽与状态字面量会有差异，用真实样本做用例比连机器跑更可靠。
     public static int? ParseListeningPid(string netstatOutput, int port)
     {
         if (string.IsNullOrWhiteSpace(netstatOutput))
@@ -73,16 +61,12 @@ public static class PortProcessResolver
         return null;
     }
 
-    /// <summary>
-    /// 从 netstat 的地址列中取出端口。
-    /// </summary>
-    /// <param name="addressColumn">形如 <c>127.0.0.1:3100</c>、<c>[::1]:3100</c> 或 <c>0.0.0.0:3100</c>。</param>
-    /// <param name="port">解析出的端口。</param>
-    /// <returns>解析成功返回 <c>true</c>。</returns>
-    /// <remarks>
-    /// 取**最后一个冒号之后**的内容：IPv6 地址形如 <c>[::1]:3100</c> 本身含多个冒号，
-    /// 按第一个冒号切分会得到错误结果。
-    /// </remarks>
+    // 从 netstat 的地址列中取出端口。
+    // 参数 addressColumn：形如 127.0.0.1:3100、[::1]:3100 或 0.0.0.0:3100。
+    // 参数 port：解析出的端口。
+    // 返回：解析成功返回 true。
+    // 取最后一个冒号之后的内容：IPv6 地址形如 [::1]:3100 本身含多个冒号，
+    // 按第一个冒号切分会得到错误结果。
     public static bool TryExtractPort(string? addressColumn, out int port)
     {
         port = 0;
@@ -104,12 +88,10 @@ public static class PortProcessResolver
             out port);
     }
 
-    /// <summary>
-    /// 查询当前系统上监听指定端口的进程 PID。
-    /// </summary>
-    /// <param name="port">目标端口。</param>
-    /// <param name="cancellationToken">取消标记。</param>
-    /// <returns>PID；无监听或查询失败时为 <c>null</c>。</returns>
+    // 查询当前系统上监听指定端口的进程 PID。
+    // 参数 port：目标端口。
+    // 参数 cancellationToken：取消标记。
+    // 返回：PID；无监听或查询失败时为 null。
     public static async Task<int?> FindListeningPidAsync(int port, CancellationToken cancellationToken = default)
     {
         if (port is < 1 or > 65535)
@@ -121,9 +103,7 @@ public static class PortProcessResolver
         return ParseListeningPid(output, port);
     }
 
-    /// <summary>
-    /// 执行 <c>netstat -ano -p TCP</c> 并返回标准输出；失败时返回空串。
-    /// </summary>
+    // 执行 netstat -ano -p TCP 并返回标准输出；失败时返回空串。
     private static async Task<string> RunNetstatAsync(CancellationToken cancellationToken)
     {
         try

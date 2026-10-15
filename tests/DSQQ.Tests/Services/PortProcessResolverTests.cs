@@ -4,18 +4,14 @@ using DSQQ.Services;
 
 namespace DSQQ.Tests.Services;
 
-/// <summary>
-/// <see cref="PortProcessResolver"/> 的行为约束。
-/// </summary>
-/// <remarks>
-/// 这个类是"安全停止服务"的唯一依据：它解析出 PID，上层只杀这一个进程树。
-/// 一旦解析错误（例如把 ESTABLISHED 行的客户端 PID 当成服务 PID），
-/// 就会杀错进程 —— 在真实场景里可能把用户的 QQ 或浏览器杀掉。
-/// 因此这里既覆盖文本解析的边界，也用真实监听端口做一次端到端校验。
-/// </remarks>
+// PortProcessResolver 的行为约束。
+// 这个类是"安全停止服务"的唯一依据：它解析出 PID，上层只杀这一个进程树。
+// 一旦解析错误（例如把 ESTABLISHED 行的客户端 PID 当成服务 PID），
+// 就会杀错进程 —— 在真实场景里可能把用户的 QQ 或浏览器杀掉。
+// 因此这里既覆盖文本解析的边界，也用真实监听端口做一次端到端校验。
 public sealed class PortProcessResolverTests
 {
-    /// <summary>一段真实形状的 netstat 输出（含 IPv4/IPv6、监听与已建立连接）。</summary>
+    // 一段真实形状的 netstat 输出（含 IPv4/IPv6、监听与已建立连接）。
     private const string SampleOutput = """
           Proto  Local Address          Foreign Address        State           PID
           TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       1156

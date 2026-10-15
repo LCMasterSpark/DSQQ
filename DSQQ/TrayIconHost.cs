@@ -7,21 +7,13 @@ using WinForms = System.Windows.Forms;
 
 namespace DSQQ;
 
-/// <summary>
-/// 系统托盘图标宿主。
-/// </summary>
-/// <remarks>
-/// <para>
-/// 技术选择：用 <see cref="WinForms.NotifyIcon"/> 而非第三方 WPF 托盘库。
-/// 理由是本程序只需要"图标 + 右键菜单 + 气泡提示"三件事，
-/// <c>UseWindowsForms</c> 已随 SDK 提供，不引入额外依赖更利于长期维护。
-/// </para>
-/// <para>
-/// 图标**运行时自绘**：项目里不新增 <c>.ico</c> 二进制资源，
-/// 好处是仓库保持纯代码、评审时没有不可读的二进制 diff。
-/// 代价是外观朴素（一个带状态色的圆点），后续可替换为正式图标。
-/// </para>
-/// </remarks>
+// 系统托盘图标宿主。
+// 技术选择：用 WinForms.NotifyIcon 而非第三方 WPF 托盘库。
+// 理由是本程序只需要"图标 + 右键菜单 + 气泡提示"三件事，
+// UseWindowsForms 已随 SDK 提供，不引入额外依赖更利于长期维护。
+// 图标运行时自绘：项目里不新增 .ico 二进制资源，
+// 好处是仓库保持纯代码、评审时没有不可读的二进制 diff。
+// 代价是外观朴素（一个带状态色的圆点），后续可替换为正式图标。
 public sealed class TrayIconHost : IDisposable
 {
     private readonly Func<AppConfig> _configAccessor;
@@ -34,15 +26,13 @@ public sealed class TrayIconHost : IDisposable
     private Icon? _icon;
     private bool _disposed;
 
-    /// <summary>
-    /// 初始化托盘宿主（不立即创建图标，需调用 <see cref="Initialize"/>）。
-    /// </summary>
-    /// <param name="configAccessor">读取当前配置的委托（用于菜单文案与路径展示）。</param>
-    /// <param name="showWindow">"显示主窗口"动作。</param>
-    /// <param name="exitApplication">"退出程序"动作。</param>
-    /// <param name="startAll">可选的"一键启动"动作。</param>
-    /// <param name="stopAll">可选的"全部停止"动作。</param>
-    /// <exception cref="ArgumentNullException">任一必填委托为 <c>null</c>。</exception>
+    // 初始化托盘宿主（不立即创建图标，需调用 Initialize）。
+    // 参数 configAccessor：读取当前配置的委托（用于菜单文案与路径展示）。
+    // 参数 showWindow："显示主窗口"动作。
+    // 参数 exitApplication："退出程序"动作。
+    // 参数 startAll：可选的"一键启动"动作。
+    // 参数 stopAll：可选的"全部停止"动作。
+    // 异常 ArgumentNullException：任一必填委托为 null。
     public TrayIconHost(
         Func<AppConfig> configAccessor,
         Action showWindow,
@@ -57,11 +47,9 @@ public sealed class TrayIconHost : IDisposable
         _stopAll = stopAll;
     }
 
-    /// <summary>
-    /// 创建托盘图标与右键菜单。
-    /// </summary>
-    /// <returns>创建成功返回 <c>true</c>；失败（如资源管理器不可用）返回 <c>false</c>。</returns>
-    /// <remarks>失败不抛异常：托盘是增强功能，缺失不应导致程序无法使用。</remarks>
+    // 创建托盘图标与右键菜单。
+    // 返回：创建成功返回 true；失败（如资源管理器不可用）返回 false。
+    // 失败不抛异常：托盘是增强功能，缺失不应导致程序无法使用。
     public bool Initialize()
     {
         if (_notifyIcon is not null)
@@ -113,12 +101,10 @@ public sealed class TrayIconHost : IDisposable
         }
     }
 
-    /// <summary>
-    /// 弹出气泡提示（用于告警关键字命中、启动失败等需要用户注意的事件）。
-    /// </summary>
-    /// <param name="title">标题。</param>
-    /// <param name="message">正文。</param>
-    /// <param name="isWarning">是否为警告（决定图标类型）。</param>
+    // 弹出气泡提示（用于告警关键字命中、启动失败等需要用户注意的事件）。
+    // 参数 title：标题。
+    // 参数 message：正文。
+    // 参数 isWarning：是否为警告（决定图标类型）。
     public void ShowBalloon(string title, string message, bool isWarning = false)
     {
         if (_notifyIcon is null || !_notifyIcon.Visible)
@@ -141,8 +127,8 @@ public sealed class TrayIconHost : IDisposable
         }
     }
 
-    /// <summary>更新悬停提示文本。</summary>
-    /// <param name="text">提示文本（Windows 限制约 63 字符，超出会被截断）。</param>
+    // 更新悬停提示文本。
+    // 参数 text：提示文本（Windows 限制约 63 字符，超出会被截断）。
     public void UpdateTooltip(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -161,7 +147,6 @@ public sealed class TrayIconHost : IDisposable
         }
     }
 
-    /// <inheritdoc />
     public void Dispose()
     {
         if (_disposed)
@@ -194,7 +179,7 @@ public sealed class TrayIconHost : IDisposable
         return Path.Combine(config.SnowLuma.InstallDirectory, "logs");
     }
 
-    /// <summary>打开文件；不存在时退化为打开其所在目录。</summary>
+    // 打开文件；不存在时退化为打开其所在目录。
     private static void OpenFileSafe(string path)
     {
         try
@@ -232,9 +217,7 @@ public sealed class TrayIconHost : IDisposable
         }
     }
 
-    /// <summary>
-    /// 运行时生成托盘图标：深色圆底 + 亮色中心点。
-    /// </summary>
+    // 运行时生成托盘图标：深色圆底 + 亮色中心点。
     private static Icon CreateDefaultIcon()
     {
         const int Size = 32;
@@ -265,12 +248,12 @@ public sealed class TrayIconHost : IDisposable
         }
     }
 
-    /// <summary>所需的 Win32 互操作声明。</summary>
+    // 所需的 Win32 互操作声明。
     private static class NativeMethods
     {
-        /// <summary>销毁图标句柄，避免 GDI 对象泄漏。</summary>
-        /// <param name="handle">由 <c>Bitmap.GetHicon()</c> 返回的句柄。</param>
-        /// <returns>成功返回非零。</returns>
+        // 销毁图标句柄，避免 GDI 对象泄漏。
+        // 参数 handle：由 Bitmap.GetHicon() 返回的句柄。
+        // 返回：成功返回非零。
         [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
         internal static extern bool DestroyIcon(IntPtr handle);
     }

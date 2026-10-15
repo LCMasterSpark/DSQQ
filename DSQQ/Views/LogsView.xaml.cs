@@ -21,12 +21,10 @@ using Microsoft.Win32;
 
 namespace DSQQ.Views;
 
-/// <summary>
-/// 日志中心：多来源跟随、级别与关键字过滤、诊断包导出。
-/// </summary>
+// 日志中心：多来源跟随、级别与关键字过滤、诊断包导出。
 public partial class LogsView : UserControl
 {
-    /// <summary>界面最多保留的行数，防止长时间运行后内存无限增长。</summary>
+    // 界面最多保留的行数，防止长时间运行后内存无限增长。
     private const int MaxBufferedLines = 20_000;
 
     private static readonly Brush ErrorBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
@@ -44,9 +42,9 @@ public partial class LogsView : UserControl
 
     private string _currentSource = string.Empty;
 
-    /// <summary>初始化日志页。</summary>
-    /// <param name="services">应用服务宿主。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="services"/> 为 <c>null</c>。</exception>
+    // 初始化日志页。
+    // 参数 services：应用服务宿主。
+    // 异常 ArgumentNullException：为 null。
     public LogsView(AppServices services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -68,22 +66,21 @@ public partial class LogsView : UserControl
         Unloaded += (_, _) => StopAllTails();
     }
 
-    /// <summary>日志来源选项。</summary>
+    // 日志来源选项。
     private sealed record SourceOption(string Name, Func<AppServices, string> ResolvePath)
     {
-        /// <summary>桥接主日志（排查第一现场）。</summary>
+        // 桥接主日志（排查第一现场）。
         public static readonly SourceOption BridgeLog = new("桥接日志", s => s.BridgeLogPath);
 
-        /// <summary>桥接活动日志（消息进出）。</summary>
+        // 桥接活动日志（消息进出）。
         public static readonly SourceOption BridgeActivity = new("桥接活动日志", s => s.BridgeActivityLogPath);
 
-        /// <summary>SnowLuma 当天的日志（含注入与上游健康）。</summary>
+        // SnowLuma 当天的日志（含注入与上游健康）。
         public static readonly SourceOption SnowLumaLog = new("SnowLuma 日志", ResolveSnowLumaLog);
 
-        /// <inheritdoc />
         public override string ToString() => Name;
 
-        /// <summary>SnowLuma 日志按天轮转，这里取最近修改的一个。</summary>
+        // SnowLuma 日志按天轮转，这里取最近修改的一个。
         private static string ResolveSnowLumaLog(AppServices services)
         {
             var directory = Path.Combine(services.Config.SnowLuma.InstallDirectory, "logs");
@@ -111,29 +108,29 @@ public partial class LogsView : UserControl
         }
     }
 
-    /// <summary>界面用的日志行。</summary>
+    // 界面用的日志行。
     public sealed class LogEntry
     {
-        /// <summary>来源名称。</summary>
+        // 来源名称。
         public required string Source { get; init; }
 
-        /// <summary>时间文本。</summary>
+        // 时间文本。
         public required string TimeText { get; init; }
 
-        /// <summary>级别文本。</summary>
+        // 级别文本。
         public required string LevelText { get; init; }
 
-        /// <summary>行内容。</summary>
+        // 行内容。
         public required string Text { get; init; }
 
-        /// <summary>级别对应的颜色。</summary>
+        // 级别对应的颜色。
         public required Brush LevelBrush { get; init; }
 
-        /// <summary>原始级别（用于过滤）。</summary>
+        // 原始级别（用于过滤）。
         public required LogLevel Level { get; init; }
     }
 
-    /// <summary>切换来源或级别时重建监听。</summary>
+    // 切换来源或级别时重建监听。
     private void OnFilterChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded || SourceCombo.SelectedItem is not SourceOption option)
@@ -144,10 +141,10 @@ public partial class LogsView : UserControl
         SwitchSource(option);
     }
 
-    /// <summary>关键字变化只重新过滤，不重建监听。</summary>
+    // 关键字变化只重新过滤，不重建监听。
     private void OnFilterTextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
 
-    /// <summary>切换到指定来源。</summary>
+    // 切换到指定来源。
     private void SwitchSource(SourceOption option)
     {
         if (_currentSource == option.Name)
@@ -178,7 +175,7 @@ public partial class LogsView : UserControl
         StatusText.Text = tail.Exists ? "跟随中" : $"文件不存在：{path}";
     }
 
-    /// <summary>启动读取任务，把新行加入缓冲并刷新界面。</summary>
+    // 启动读取任务，把新行加入缓冲并刷新界面。
     private void StartPump(string source, LogFileTail tail)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
@@ -235,7 +232,7 @@ public partial class LogsView : UserControl
         });
     }
 
-    /// <summary>命中告警关键字时通过托盘提示。</summary>
+    // 命中告警关键字时通过托盘提示。
     private void CheckAlert(LogEntry entry)
     {
         foreach (var keyword in _services.Config.Monitoring.AlertKeywords)
@@ -251,7 +248,7 @@ public partial class LogsView : UserControl
         }
     }
 
-    /// <summary>判断一行是否通过当前过滤条件。</summary>
+    // 判断一行是否通过当前过滤条件。
     private bool Matches(LogEntry entry)
     {
         if (LevelCombo.SelectedIndex == 1 && entry.Level is not (LogLevel.Warn or LogLevel.Error))
@@ -286,7 +283,7 @@ public partial class LogsView : UserControl
         return entry.Text.Contains(filter, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>用当前过滤条件重建可见列表。</summary>
+    // 用当前过滤条件重建可见列表。
     private void ApplyFilter()
     {
         if (!IsLoaded)
@@ -306,7 +303,7 @@ public partial class LogsView : UserControl
         StatusText.Text = $"显示 {_visible.Count} / 缓冲 {_buffer.Count} 行";
     }
 
-    /// <summary>重新加载：丢弃缓冲与监听，重新读取文件尾部。</summary>
+    // 重新加载：丢弃缓冲与监听，重新读取文件尾部。
     private void OnReloadClick(object sender, RoutedEventArgs e)
     {
         StopAllTails();
@@ -324,7 +321,7 @@ public partial class LogsView : UserControl
         }
     }
 
-    /// <summary>只清空界面缓冲，不动磁盘文件。</summary>
+    // 只清空界面缓冲，不动磁盘文件。
     private void OnClearViewClick(object sender, RoutedEventArgs e)
     {
         _buffer.Clear();
@@ -332,7 +329,7 @@ public partial class LogsView : UserControl
         StatusText.Text = "视图已清空（磁盘上的日志未改动）";
     }
 
-    /// <summary>导出诊断包：把排查常用的信息汇总成一个文本文件。</summary>
+    // 导出诊断包：把排查常用的信息汇总成一个文本文件。
     private async void OnExportClick(object sender, RoutedEventArgs e)
     {
         try
@@ -360,7 +357,7 @@ public partial class LogsView : UserControl
         }
     }
 
-    /// <summary>汇总诊断信息：环境、桥接状态、端口占用、日志尾部。</summary>
+    // 汇总诊断信息：环境、桥接状态、端口占用、日志尾部。
     private async Task<string> BuildDiagnosticReportAsync()
     {
         var config = _services.Config;
@@ -416,7 +413,7 @@ public partial class LogsView : UserControl
         return builder.ToString();
     }
 
-    /// <summary>读取文件尾部若干行；失败返回说明文本。</summary>
+    // 读取文件尾部若干行；失败返回说明文本。
     private static string TailLines(string path, int count)
     {
         try
@@ -435,7 +432,7 @@ public partial class LogsView : UserControl
         }
     }
 
-    /// <summary>更新底部提示。</summary>
+    // 更新底部提示。
     private void UpdateHint(string? path = null)
     {
         var config = _services.Config;
@@ -444,7 +441,7 @@ public partial class LogsView : UserControl
             : $"当前文件：{path}    告警关键字：{string.Join('、', config.Monitoring.AlertKeywords)}";
     }
 
-    /// <summary>停止所有监听任务。</summary>
+    // 停止所有监听任务。
     private void StopAllTails()
     {
         foreach (var cts in _tailTasks.Values)

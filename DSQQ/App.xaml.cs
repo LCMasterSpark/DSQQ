@@ -5,32 +5,25 @@ using DSQQ.Models;
 
 namespace DSQQ;
 
-/// <summary>
-/// 应用程序入口。
-/// </summary>
-/// <remarks>
-/// 职责：
-/// <list type="number">
-/// <item>集中兜住未处理异常 —— 本程序大量依赖"外部进程 + 本机端口 + 网络请求"，
-/// 任何一处偶发异常都不应该让整个面板消失；</item>
-/// <item>创建应用级服务宿主（<see cref="AppServices"/>）并暴露为静态属性，供各视图取用；</item>
-/// <item>管理托盘图标宿主（<see cref="TrayIconHost"/>）的生命周期。</item>
-/// </list>
-/// 说明：这里用静态属性而非依赖注入容器，理由见 <see cref="AppServices"/> 的注释；
-/// 等后续阶段接入两个 API 客户端、依赖图变深后再切换。
-/// </remarks>
+// 应用程序入口。
+// 职责：
+// 集中兜住未处理异常 —— 本程序大量依赖"外部进程 + 本机端口 + 网络请求"，
+// 任何一处偶发异常都不应该让整个面板消失；
+// 创建应用级服务宿主（AppServices）并暴露为静态属性，供各视图取用；
+// 管理托盘图标宿主（TrayIconHost）的生命周期。
+// 说明：这里用静态属性而非依赖注入容器，理由见 AppServices 的注释；
+// 等后续阶段接入两个 API 客户端、依赖图变深后再切换。
 public partial class App : Application
 {
-    /// <summary>应用级服务宿主（组合根）。</summary>
+    // 应用级服务宿主（组合根）。
     public static AppServices Services { get; private set; } = null!;
 
-    /// <summary>托盘图标宿主；初始化失败时为 <c>null</c>（托盘是增强功能，不影响主流程）。</summary>
+    // 托盘图标宿主；初始化失败时为 null（托盘是增强功能，不影响主流程）。
     public static TrayIconHost? Tray { get; private set; }
 
-    /// <summary>配置读取失败时的提示（首次启动无配置属正常情况）。</summary>
+    // 配置读取失败时的提示（首次启动无配置属正常情况）。
     public static string? ConfigLoadError { get; private set; }
 
-    /// <inheritdoc />
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -41,11 +34,9 @@ public partial class App : Application
         Services = new AppServices(config);
     }
 
-    /// <summary>
-    /// 初始化托盘图标。由主窗口在 <c>Loaded</c> 时调用 —— 托盘回调需要引用主窗口，
-    /// 放在窗口就绪之后可避免"回调里窗口还不存在"的时序问题。
-    /// </summary>
-    /// <param name="showWindow">显示主窗口的动作。</param>
+    // 初始化托盘图标。由主窗口在 Loaded 时调用 —— 托盘回调需要引用主窗口，
+    // 放在窗口就绪之后可避免"回调里窗口还不存在"的时序问题。
+    // 参数 showWindow：显示主窗口的动作。
     public static void InitializeTray(Action showWindow)
     {
         if (Tray is not null)
@@ -73,13 +64,9 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 退出应用程序：先隐藏托盘图标，再关闭应用。
-    /// </summary>
-    /// <remarks>
-    /// 必须先让图标不可见：否则进程退出前会在托盘里留下一个"幽灵图标"，
-    /// 直到鼠标划过才消失。
-    /// </remarks>
+    // 退出应用程序：先隐藏托盘图标，再关闭应用。
+    // 必须先让图标不可见：否则进程退出前会在托盘里留下一个"幽灵图标"，
+    // 直到鼠标划过才消失。
     public static void ExitApplication()
     {
         try
@@ -97,9 +84,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 注册三层异常兜底：界面线程、后台线程、未被观察的 Task。
-    /// </summary>
+    // 注册三层异常兜底：界面线程、后台线程、未被观察的 Task。
     private void RegisterGlobalExceptionHandlers()
     {
         // 1) 界面线程：默认行为会直接终止进程。
@@ -126,11 +111,9 @@ public partial class App : Application
         };
     }
 
-    /// <summary>
-    /// 统一错误上报（后续替换为应用日志 + 托盘通知，并改用 MahApps 的对话框）。
-    /// </summary>
-    /// <param name="title">错误标题。</param>
-    /// <param name="exception">异常对象。</param>
+    // 统一错误上报（后续替换为应用日志 + 托盘通知，并改用 MahApps 的对话框）。
+    // 参数 title：错误标题。
+    // 参数 exception：异常对象。
     private static void ReportError(string title, Exception exception)
     {
         try

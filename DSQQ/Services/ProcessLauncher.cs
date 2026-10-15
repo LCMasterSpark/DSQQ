@@ -3,29 +3,21 @@ using System.IO;
 
 namespace DSQQ.Services;
 
-/// <summary>
-/// 启动/停止由本程序托管的外部进程。
-/// </summary>
-/// <remarks>
-/// 设计约定：
-/// <list type="bullet">
-/// <item>所有方法**不抛异常**，统一返回 <see cref="LauncherResult"/>，
-/// 让界面能直接展示失败原因（路径不存在、权限不足、可执行文件缺失等）；</item>
-/// <item>停止一律走 <see cref="Process.Kill(bool)"/> 杀**进程树**：
-/// 桥接会派生 MCP 子进程（<c>mcp-snowluma-safe.js</c> 等），只杀父进程会留下孤儿进程占着端口；</item>
-/// <item>环境变量通过 <see cref="ProcessStartInfo.Environment"/> 传递，不用命令行拼接，
-/// 避免引号与特殊字符带来的注入问题。</item>
-/// </list>
-/// </remarks>
+// 启动/停止由本程序托管的外部进程。
+// 设计约定：
+// 所有方法不抛异常，统一返回 LauncherResult，
+// 让界面能直接展示失败原因（路径不存在、权限不足、可执行文件缺失等）；
+// 停止一律走 Process.Kill(bool) 杀进程树：
+// 桥接会派生 MCP 子进程（mcp-snowluma-safe.js 等），只杀父进程会留下孤儿进程占着端口；
+// 环境变量通过 ProcessStartInfo.Environment 传递，不用命令行拼接，
+// 避免引号与特殊字符带来的注入问题。
 public static class ProcessLauncher
 {
-    /// <summary>
-    /// 启动一个批处理文件（用于 SnowLuma 的 <c>launcher.bat</c>）。
-    /// </summary>
-    /// <param name="workingDirectory">工作目录，通常为安装目录。</param>
-    /// <param name="batchFileName">批处理文件名，例如 <c>launcher.bat</c>。</param>
-    /// <param name="environment">额外环境变量；可为 <c>null</c>。</param>
-    /// <returns>启动结果。</returns>
+    // 启动一个批处理文件（用于 SnowLuma 的 launcher.bat）。
+    // 参数 workingDirectory：工作目录，通常为安装目录。
+    // 参数 batchFileName：批处理文件名，例如 launcher.bat。
+    // 参数 environment：额外环境变量；可为 null。
+    // 返回：启动结果。
     public static LauncherResult StartBatch(
         string workingDirectory,
         string batchFileName,
@@ -73,14 +65,12 @@ public static class ProcessLauncher
         }
     }
 
-    /// <summary>
-    /// 用指定的可执行文件启动一个脚本（用于 qq-bridge：<c>node.exe src/bridge.js</c>）。
-    /// </summary>
-    /// <param name="executablePath">可执行文件绝对路径（通常为 node.exe）。</param>
-    /// <param name="scriptRelativePath">脚本相对路径，例如 <c>src\bridge.js</c>。</param>
-    /// <param name="workingDirectory">工作目录（桥接根目录）。</param>
-    /// <param name="environment">额外环境变量；可为 <c>null</c>。</param>
-    /// <returns>启动结果。</returns>
+    // 用指定的可执行文件启动一个脚本（用于 qq-bridge：node.exe src/bridge.js）。
+    // 参数 executablePath：可执行文件绝对路径（通常为 node.exe）。
+    // 参数 scriptRelativePath：脚本相对路径，例如 src\bridge.js。
+    // 参数 workingDirectory：工作目录（桥接根目录）。
+    // 参数 environment：额外环境变量；可为 null。
+    // 返回：启动结果。
     public static LauncherResult StartScript(
         string executablePath,
         string scriptRelativePath,
@@ -136,15 +126,11 @@ public static class ProcessLauncher
         }
     }
 
-    /// <summary>
-    /// 终止指定进程及其子进程树。
-    /// </summary>
-    /// <param name="processId">目标 PID。</param>
-    /// <returns>终止结果。</returns>
-    /// <remarks>
-    /// 调用方**必须**先用 <see cref="PortProcessResolver"/> 从端口反查出 PID，
-    /// 绝不可按进程名批量终止（详见该类的说明）。
-    /// </remarks>
+    // 终止指定进程及其子进程树。
+    // 参数 processId：目标 PID。
+    // 返回：终止结果。
+    // 调用方必须先用 PortProcessResolver 从端口反查出 PID，
+    // 绝不可按进程名批量终止（详见该类的说明）。
     public static LauncherResult KillTree(int processId)
     {
         if (processId <= 0)
@@ -174,11 +160,9 @@ public static class ProcessLauncher
         }
     }
 
-    /// <summary>
-    /// 判断指定进程名是否有实例在运行（用于"先登录 QQ 小号"的前置校验）。
-    /// </summary>
-    /// <param name="processName">进程名，不含扩展名，例如 <c>QQ</c>。</param>
-    /// <returns>存在运行中的实例返回 <c>true</c>；查询失败返回 <c>null</c>（区别于"确定没有"）。</returns>
+    // 判断指定进程名是否有实例在运行（用于"先登录 QQ 小号"的前置校验）。
+    // 参数 processName：进程名，不含扩展名，例如 QQ。
+    // 返回：存在运行中的实例返回 true；查询失败返回 null（区别于"确定没有"）。
     public static bool? IsProcessRunning(string processName)
     {
         if (string.IsNullOrWhiteSpace(processName))
@@ -208,18 +192,18 @@ public static class ProcessLauncher
     }
 }
 
-/// <summary>进程启动/终止的结果。</summary>
-/// <param name="Succeeded">是否成功。</param>
-/// <param name="Message">人类可读的说明（成功与失败都会有）。</param>
-/// <param name="ProcessId">启动成功时的子进程 PID；不适用时为 <c>null</c>。</param>
+// 进程启动/终止的结果。
+// 参数 Succeeded：是否成功。
+// 参数 Message：人类可读的说明（成功与失败都会有）。
+// 参数 ProcessId：启动成功时的子进程 PID；不适用时为 null。
 public readonly record struct LauncherResult(bool Succeeded, string Message, int? ProcessId = null)
 {
-    /// <summary>构造成功结果。</summary>
-    /// <param name="message">说明文本。</param>
-    /// <param name="processId">子进程 PID。</param>
+    // 构造成功结果。
+    // 参数 message：说明文本。
+    // 参数 processId：子进程 PID。
     public static LauncherResult Ok(string message, int? processId = null) => new(true, message, processId);
 
-    /// <summary>构造失败结果。</summary>
-    /// <param name="message">失败原因。</param>
+    // 构造失败结果。
+    // 参数 message：失败原因。
     public static LauncherResult Failed(string message) => new(false, message);
 }

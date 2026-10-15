@@ -18,13 +18,9 @@ using Timer = System.Timers.Timer;
 
 namespace DSQQ.Views;
 
-/// <summary>
-/// SnowLuma 页：登录态、OneBot 配置、QQ 进程与注入状态。
-/// </summary>
-/// <remarks>
-/// 登录凭据用 DPAPI 加密后写入配置文件；会话 Cookie 同样持久化，实现免重复登录。
-/// 协议同意与扫码登录不在此处代做 —— SnowLuma EULA 禁止自动化脚本部署其专有组件。
-/// </remarks>
+// SnowLuma 页：登录态、OneBot 配置、QQ 进程与注入状态。
+// 登录凭据用 DPAPI 加密后写入配置文件；会话 Cookie 同样持久化，实现免重复登录。
+// 协议同意与扫码登录不在此处代做 —— SnowLuma EULA 禁止自动化脚本部署其专有组件。
 public partial class SnowLumaView : UserControl
 {
     private readonly AppServices _services;
@@ -32,9 +28,9 @@ public partial class SnowLumaView : UserControl
     private Timer? _timer;
     private SnowLumaApiClient _client;
 
-    /// <summary>初始化页面。</summary>
-    /// <param name="services">应用服务宿主。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="services"/> 为 <c>null</c>。</exception>
+    // 初始化页面。
+    // 参数 services：应用服务宿主。
+    // 异常 ArgumentNullException：为 null。
     public SnowLumaView(AppServices services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -53,7 +49,7 @@ public partial class SnowLumaView : UserControl
         Unloaded += (_, _) => StopTimer();
     }
 
-    /// <summary>按当前配置创建客户端（配置变更后需重建）。</summary>
+    // 按当前配置创建客户端（配置变更后需重建）。
     private SnowLumaApiClient CreateClient()
     {
         var client = new SnowLumaApiClient(_services.Endpoints.SnowLumaWebUi);
@@ -66,7 +62,7 @@ public partial class SnowLumaView : UserControl
         return client;
     }
 
-    /// <summary>把保存的密码填回输入框，省去重复输入。</summary>
+    // 把保存的密码填回输入框，省去重复输入。
     private void RestoreSavedCredentials()
     {
         var saved = SecureStore.Unprotect(_services.Config.SnowLuma.WebUiPasswordProtected);
@@ -81,7 +77,7 @@ public partial class SnowLumaView : UserControl
         }
     }
 
-    /// <summary>每 5 秒刷新一次状态（进程与账号会随扫码登录变化）。</summary>
+    // 每 5 秒刷新一次状态（进程与账号会随扫码登录变化）。
     private void StartTimer()
     {
         _timer = new Timer(5000) { AutoReset = true };
@@ -96,7 +92,7 @@ public partial class SnowLumaView : UserControl
         _timer = null;
     }
 
-    /// <summary>登录。</summary>
+    // 登录。
     private async void OnLoginClick(object sender, RoutedEventArgs e)
     {
         LoginButton.IsEnabled = false;
@@ -136,7 +132,7 @@ public partial class SnowLumaView : UserControl
         }
     }
 
-    /// <summary>退出登录并清除本地会话。</summary>
+    // 退出登录并清除本地会话。
     private async void OnLogoutClick(object sender, RoutedEventArgs e)
     {
         await _client.LogoutAsync();
@@ -152,7 +148,7 @@ public partial class SnowLumaView : UserControl
         OverviewText.Text = "尚未采集。";
     }
 
-    /// <summary>保存凭据（DPAPI 加密）。</summary>
+    // 保存凭据（DPAPI 加密）。
     private void SaveCredentials(string password)
     {
         var config = _services.Config;
@@ -164,7 +160,7 @@ public partial class SnowLumaView : UserControl
         TrySaveConfig();
     }
 
-    /// <summary>保存配置；失败时提示但不打断主流程。</summary>
+    // 保存配置；失败时提示但不打断主流程。
     private void TrySaveConfig()
     {
         try
@@ -177,10 +173,10 @@ public partial class SnowLumaView : UserControl
         }
     }
 
-    /// <summary>手动刷新。</summary>
+    // 手动刷新。
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await RefreshAsync();
 
-    /// <summary>采集状态、进程与 OneBot 配置。</summary>
+    // 采集状态、进程与 OneBot 配置。
     private async Task RefreshAsync()
     {
         var status = await _client.GetStatusAsync();
@@ -218,7 +214,7 @@ public partial class SnowLumaView : UserControl
         await RefreshOneBotAsync(processes);
     }
 
-    /// <summary>读取并展示 OneBot 端点（端口与 token 掩码）。</summary>
+    // 读取并展示 OneBot 端点（端口与 token 掩码）。
     private async Task RefreshOneBotAsync(IReadOnlyList<SnowLumaProcess> processes)
     {
         var uin = processes.Select(p => p.Uin).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u))
@@ -240,13 +236,13 @@ public partial class SnowLumaView : UserControl
               + $"WS {(ws is null ? "未配置" : $"{ws.Host}:{ws.Port} token={Mask(ws.AccessToken)}")}";
     }
 
-    /// <summary>token 只显示首尾，避免明文出现在界面上。</summary>
+    // token 只显示首尾，避免明文出现在界面上。
     private static string Mask(string? token)
         => string.IsNullOrEmpty(token)
             ? "(空)"
             : token.Length <= 8 ? new string('*', token.Length) : $"{token[..4]}…{token[^4..]}";
 
-    /// <summary>打开 SnowLuma 日志目录（排查注入问题时常用）。</summary>
+    // 打开 SnowLuma 日志目录（排查注入问题时常用）。
     private void OnOpenLogsClick(object sender, RoutedEventArgs e)
     {
         try

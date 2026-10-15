@@ -5,13 +5,9 @@ using DSQQ.Tests.Infrastructure;
 
 namespace DSQQ.Tests.Services;
 
-/// <summary>
-/// <see cref="AppConfigStore"/> 的行为约束。
-/// </summary>
-/// <remarks>
-/// 这些用例钉住的是"**配置坏掉时程序仍能启动**"这一健壮性要求：
-/// 文件缺失、内容为空、JSON 语法错误、字段类型不符，全部只能返回 null + 原因，不得抛异常。
-/// </remarks>
+// AppConfigStore 的行为约束。
+// 这些用例钉住的是"配置坏掉时程序仍能启动"这一健壮性要求：
+// 文件缺失、内容为空、JSON 语法错误、字段类型不符，全部只能返回 null + 原因，不得抛异常。
 public sealed class AppConfigStoreTests
 {
     [Fact]

@@ -12,14 +12,10 @@ using DSQQ.Views;
 
 namespace DSQQ;
 
-/// <summary>
-/// 主窗口：运行总览、页面装载与托盘行为。
-/// </summary>
-/// <remarks>
-/// 分层现状：本文件保留"状态采集 + 视图装配"的代码后台形态，采集结果直接写入控件。
-/// 等 P3（日志中心）与 P4/P5（两个 API 客户端）引入后，会把这些逻辑迁到 ViewModels 并改用数据绑定；
-/// 现在不提前抽象，是为了避免在需求尚未稳定时造出错误的抽象层。
-/// </remarks>
+// 主窗口：运行总览、页面装载与托盘行为。
+// 分层现状：本文件保留"状态采集 + 视图装配"的代码后台形态，采集结果直接写入控件。
+// 等 P3（日志中心）与 P4/P5（两个 API 客户端）引入后，会把这些逻辑迁到 ViewModels 并改用数据绑定；
+// 现在不提前抽象，是为了避免在需求尚未稳定时造出错误的抽象层。
 public partial class MainWindow : Window
 {
     private static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(3);
@@ -35,11 +31,8 @@ public partial class MainWindow : Window
     private Timer? _pollTimer;
     private bool _refreshing;
 
-    /// <summary>
-    /// 初始化主窗口。
-    /// </summary>
-    /// <param name="services">应用服务宿主；为 <c>null</c> 时回退到 <see cref="App.Services"/>
-    /// （设计器预览等场景下两者都可能为空，此时退化为默认配置，界面仍可打开）。</param>
+    // 初始化主窗口。
+    // 参数 services：应用服务宿主；为 null 时回退到 App.Services （设计器预览等场景下两者都可能为空，此时退化为默认配置，界面仍可打开）。
     public MainWindow(AppServices? services = null)
     {
         InitializeComponent();
@@ -56,15 +49,13 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>当前配置（经宿主读取，保证与设置页保存后的新值一致）。</summary>
+    // 当前配置（经宿主读取，保证与设置页保存后的新值一致）。
     private AppConfig CurrentConfig => _services.Config;
 
-    /// <summary>当前端点。</summary>
+    // 当前端点。
     private ServiceEndpoints CurrentEndpoints => _services.Endpoints;
 
-    /// <summary>
-    /// 窗口加载：装配子页面、初始化托盘、启动定时采集。
-    /// </summary>
+    // 窗口加载：装配子页面、初始化托盘、启动定时采集。
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
         // 各页面在此注入依赖：各自持有需要的服务，主窗口不中转数据。
@@ -85,9 +76,7 @@ public partial class MainWindow : Window
         SubtitleText.Text = $"每 {interval.TotalSeconds:0.#} 秒自动刷新";
     }
 
-    /// <summary>
-    /// 关闭窗口：按配置最小化到托盘，或在确认后真正退出。
-    /// </summary>
+    // 关闭窗口：按配置最小化到托盘，或在确认后真正退出。
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (App.Tray is not null && CurrentConfig.Startup.MinimizeToTrayOnClose)
@@ -112,17 +101,17 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>最小化到托盘。</summary>
+    // 最小化到托盘。
     private void OnHideToTrayClick(object sender, RoutedEventArgs e) => HideToTray();
 
-    /// <summary>隐藏窗口并给出一次性提示（避免用户以为程序被关掉了）。</summary>
+    // 隐藏窗口并给出一次性提示（避免用户以为程序被关掉了）。
     private void HideToTray()
     {
         Hide();
         App.Tray?.ShowBalloon("DSQQ 仍在运行", "已最小化到托盘：双击图标重新打开，右键菜单可退出。");
     }
 
-    /// <summary>从托盘恢复窗口。</summary>
+    // 从托盘恢复窗口。
     private void ShowFromTray()
     {
         // 托盘事件来自 WinForms 消息循环，不一定在 UI 线程上，统一切回 Dispatcher。
@@ -138,7 +127,7 @@ public partial class MainWindow : Window
         });
     }
 
-    /// <summary>手动刷新。</summary>
+    // 手动刷新。
     private async void OnRefreshClick(object sender, RoutedEventArgs e)
     {
         RefreshButton.IsEnabled = false;
@@ -152,13 +141,9 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// 采集三个服务的状态并刷新界面。
-    /// </summary>
-    /// <remarks>
-    /// 用 <c>_refreshing</c> 做重入保护：轮询间隔短于一次采集耗时时，
-    /// 否则会出现并发采集与界面错乱。
-    /// </remarks>
+    // 采集三个服务的状态并刷新界面。
+    // 用 _refreshing 做重入保护：轮询间隔短于一次采集耗时时，
+    // 否则会出现并发采集与界面错乱。
     private async Task RefreshAllAsync()
     {
         if (_refreshing)
@@ -203,7 +188,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>把单个服务的探测结果反映到界面。</summary>
+    // 把单个服务的探测结果反映到界面。
     private static void ApplyResult(
         System.Windows.Shapes.Ellipse dot,
         System.Windows.Controls.TextBlock stateText,
@@ -221,7 +206,7 @@ public partial class MainWindow : Window
         detailText.Text = result.Detail;
     }
 
-    /// <summary>状态枚举的中文文案（界面与托盘共用，避免两处措辞漂移）。</summary>
+    // 状态枚举的中文文案（界面与托盘共用，避免两处措辞漂移）。
     private static string StateText(ProbeState state) => state switch
     {
         ProbeState.Online => "在线",
@@ -229,7 +214,7 @@ public partial class MainWindow : Window
         _ => "离线",
     };
 
-    /// <summary>探测 SnowLuma：WebUI 端口是否可连（端口可能被顺延，故做区间探测）。</summary>
+    // 探测 SnowLuma：WebUI 端口是否可连（端口可能被顺延，故做区间探测）。
     private async Task<ProbeResult> ProbeSnowLumaAsync(CancellationToken token)
     {
         var config = CurrentConfig;
@@ -251,7 +236,7 @@ public partial class MainWindow : Window
         return new ProbeResult(ProbeState.Online, $"WebUI http://127.0.0.1:{probe.Value} {suffix}");
     }
 
-    /// <summary>探测 qq-bridge：控制台端口是否可连，并尽力取回运行状态。</summary>
+    // 探测 qq-bridge：控制台端口是否可连，并尽力取回运行状态。
     private async Task<ProbeResult> ProbeBridgeAsync(CancellationToken token)
     {
         var config = CurrentConfig;
@@ -303,7 +288,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>探测 DSH：Web API 端口是否可连。</summary>
+    // 探测 DSH：Web API 端口是否可连。
     private async Task<ProbeResult> ProbeDshAsync(CancellationToken token)
     {
         var config = CurrentConfig;
@@ -328,7 +313,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>把桥接状态拼成可读的运行细节。</summary>
+    // 把桥接状态拼成可读的运行细节。
     private void BuildDetails(ProbeResult bridge)
     {
         var config = CurrentConfig;
@@ -360,7 +345,7 @@ public partial class MainWindow : Window
         DetailsText.Text = string.Join(Environment.NewLine, lines);
     }
 
-    /// <summary>更新底部路径提示，路径不存在时明确标出（排障时最常犯的配置错误）。</summary>
+    // 更新底部路径提示，路径不存在时明确标出（排障时最常犯的配置错误）。
     private void UpdateFooter()
     {
         var config = CurrentConfig;
@@ -373,7 +358,7 @@ public partial class MainWindow : Window
             + $"DSH {config.Dsh.HomeDirectory}";
     }
 
-    /// <summary>安全地 GET 一个 URL：失败一律返回 <c>null</c>，由调用方决定如何呈现。</summary>
+    // 安全地 GET 一个 URL：失败一律返回 null，由调用方决定如何呈现。
     private async Task<string?> GetStringSafeAsync(Uri uri, CancellationToken token)
     {
         try
@@ -420,13 +405,13 @@ public partial class MainWindow : Window
         return current;
     }
 
-    /// <summary>探测结果的呈现模型。</summary>
+    // 探测结果的呈现模型。
     private readonly record struct ProbeResult(
         ProbeState State,
         string Detail,
         BridgeSnapshot? Snapshot = null);
 
-    /// <summary>桥接运行状态快照。</summary>
+    // 桥接运行状态快照。
     private readonly record struct BridgeSnapshot(
         string Mode,
         bool SnowLumaConnected,
@@ -435,16 +420,16 @@ public partial class MainWindow : Window
         int AllowGroups,
         int AllowPrivate);
 
-    /// <summary>服务状态。</summary>
+    // 服务状态。
     private enum ProbeState
     {
-        /// <summary>未监听 / 无法连接。</summary>
+        // 未监听 / 无法连接。
         Offline,
 
-        /// <summary>可用但存在需要注意的情况（如上游收不到数据、接口无响应）。</summary>
+        // 可用但存在需要注意的情况（如上游收不到数据、接口无响应）。
         Degraded,
 
-        /// <summary>正常。</summary>
+        // 正常。
         Online,
     }
 }

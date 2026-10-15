@@ -3,74 +3,62 @@ using DSQQ.Models;
 
 namespace DSQQ.Services;
 
-/// <summary>
-/// 启动流程的阶段，用于向界面汇报进度。
-/// </summary>
+// 启动流程的阶段，用于向界面汇报进度。
 public enum StartupStage
 {
-    /// <summary>启动前的环境校验。</summary>
+    // 启动前的环境校验。
     Checking,
 
-    /// <summary>启动 SnowLuma。</summary>
+    // 启动 SnowLuma。
     StartingSnowLuma,
 
-    /// <summary>等待 SnowLuma 的 WebUI 端口就绪。</summary>
+    // 等待 SnowLuma 的 WebUI 端口就绪。
     WaitingSnowLuma,
 
-    /// <summary>启动 qq-bridge。</summary>
+    // 启动 qq-bridge。
     StartingBridge,
 
-    /// <summary>等待桥接控制台端口就绪。</summary>
+    // 等待桥接控制台端口就绪。
     WaitingBridge,
 
-    /// <summary>探活确认整体可用。</summary>
+    // 探活确认整体可用。
     Verifying,
 
-    /// <summary>流程结束（成功或失败）。</summary>
+    // 流程结束（成功或失败）。
     Completed,
 }
 
-/// <summary>启动进度。</summary>
-/// <param name="Stage">当前阶段。</param>
-/// <param name="Message">面向用户的说明。</param>
-/// <param name="Succeeded">阶段是否成功（仅对最终阶段有意义，中途失败会立即结束流程）。</param>
+// 启动进度。
+// 参数 Stage：当前阶段。
+// 参数 Message：面向用户的说明。
+// 参数 Succeeded：阶段是否成功（仅对最终阶段有意义，中途失败会立即结束流程）。
 public readonly record struct StartupProgress(StartupStage Stage, string Message, bool Succeeded = true);
 
-/// <summary>
-/// 服务编排：一键启动 / 一键停止。
-/// </summary>
-/// <remarks>
-/// <para><b>启动顺序</b>（顺序不可调换）：</para>
-/// <list type="number">
-/// <item>校验 QQ.exe 是否在跑 —— SnowLuma 是挂在 QQ 进程上的，QQ 没开就启动它，
-/// 只会建出 WebUI 而不建 OneBot（3000/3001），表现为"起来了但收不到消息"；</item>
-/// <item>启动 SnowLuma 并等端口就绪；</item>
-/// <item>启动 qq-bridge 并等控制台端口就绪；</item>
-/// <item>探活 <c>/api/status</c>。</item>
-/// </list>
-/// <para><b>停止顺序</b>与启动相反，并且有一条硬约束：</para>
-/// <list type="bullet">
-/// <item>绝不按进程名批量终止（SnowLuma 与桥接都叫 node.exe，会互相误杀）；</item>
-/// <item>一律从端口反查 PID，只终止那棵进程树；</item>
-/// <item>桥接停止后清理 <c>state/bridge.lock</c>：它用锁文件做单实例保护，
-/// 残留会让下次启动被判定为"已有实例在运行"而拒绝启动。</item>
-/// </list>
-/// <para><b>合规边界</b>：本类只负责"启动/停止进程"。协议同意、扫码登录
-/// 必须由用户本人在 SnowLuma WebUI 完成 —— SnowLuma EULA §5.4 明确禁止
-/// 通过自动化脚本部署其专有组件。</para>
-/// </remarks>
-/// <param name="config">应用配置。</param>
+// 服务编排：一键启动 / 一键停止。
+// 启动顺序（顺序不可调换）：
+// 校验 QQ.exe 是否在跑 —— SnowLuma 是挂在 QQ 进程上的，QQ 没开就启动它，
+// 只会建出 WebUI 而不建 OneBot（3000/3001），表现为"起来了但收不到消息"；
+// 启动 SnowLuma 并等端口就绪；
+// 启动 qq-bridge 并等控制台端口就绪；
+// 探活 /api/status。
+// 停止顺序与启动相反，并且有一条硬约束：
+// 绝不按进程名批量终止（SnowLuma 与桥接都叫 node.exe，会互相误杀）；
+// 一律从端口反查 PID，只终止那棵进程树；
+// 桥接停止后清理 state/bridge.lock：它用锁文件做单实例保护，
+// 残留会让下次启动被判定为"已有实例在运行"而拒绝启动。
+// 合规边界：本类只负责"启动/停止进程"。协议同意、扫码登录
+// 必须由用户本人在 SnowLuma WebUI 完成 —— SnowLuma EULA §5.4 明确禁止
+// 通过自动化脚本部署其专有组件。
+// 参数 config：应用配置。
 public sealed class ServiceOrchestrator(AppConfig config)
 {
     private readonly AppConfig _config = config ?? throw new ArgumentNullException(nameof(config));
 
-    /// <summary>
-    /// 按顺序启动 SnowLuma 与 qq-bridge，并通过 <paramref name="progress"/> 汇报每一步。
-    /// </summary>
-    /// <param name="progress">进度回调；可为 <c>null</c>。</param>
-    /// <param name="cancellationToken">取消标记。</param>
-    /// <returns>整体是否成功。</returns>
-    /// <remarks>本方法不抛异常：失败通过进度回调与返回值表达。</remarks>
+    // 按顺序启动 SnowLuma 与 qq-bridge，并通过 汇报每一步。
+    // 参数 progress：进度回调；可为 null。
+    // 参数 cancellationToken：取消标记。
+    // 返回：整体是否成功。
+    // 本方法不抛异常：失败通过进度回调与返回值表达。
     public async Task<bool> StartAllAsync(
         IProgress<StartupProgress>? progress = null,
         CancellationToken cancellationToken = default)
@@ -237,11 +225,9 @@ public sealed class ServiceOrchestrator(AppConfig config)
         }
     }
 
-    /// <summary>
-    /// 停止桥接（先停，因为它依赖 SnowLuma）。
-    /// </summary>
-    /// <param name="cancellationToken">取消标记。</param>
-    /// <returns>面向用户的结果说明列表。</returns>
+    // 停止桥接（先停，因为它依赖 SnowLuma）。
+    // 参数 cancellationToken：取消标记。
+    // 返回：面向用户的结果说明列表。
     public async Task<IReadOnlyList<string>> StopBridgeAsync(CancellationToken cancellationToken = default)
     {
         var messages = new List<string>();
@@ -279,15 +265,11 @@ public sealed class ServiceOrchestrator(AppConfig config)
         return messages;
     }
 
-    /// <summary>
-    /// 停止 SnowLuma。
-    /// </summary>
-    /// <param name="cancellationToken">取消标记。</param>
-    /// <returns>面向用户的结果说明列表。</returns>
-    /// <remarks>
-    /// SnowLuma 会同时占用 WebUI 端口与 OneBot 的两个端口，三者的 PID 相同；
-    /// 这里用"先 WebUI、再 OneBot"的顺序反查，任一查到即足以定位进程。
-    /// </remarks>
+    // 停止 SnowLuma。
+    // 参数 cancellationToken：取消标记。
+    // 返回：面向用户的结果说明列表。
+    // SnowLuma 会同时占用 WebUI 端口与 OneBot 的两个端口，三者的 PID 相同；
+    // 这里用"先 WebUI、再 OneBot"的顺序反查，任一查到即足以定位进程。
     public async Task<IReadOnlyList<string>> StopSnowLumaAsync(CancellationToken cancellationToken = default)
     {
         var messages = new List<string>();
@@ -331,14 +313,10 @@ public sealed class ServiceOrchestrator(AppConfig config)
         return messages;
     }
 
-    /// <summary>
-    /// 解析桥接要使用的 node.exe 路径。
-    /// </summary>
-    /// <returns>可执行文件路径；未找到时为 <c>null</c>。</returns>
-    /// <remarks>
-    /// 优先级：配置指定 → DSH 运行时自带（实测为 24.x，满足桥接要求的 ≥ 22.13）→ PATH。
-    /// 复用 DSH 运行时可以避免在 C 盘之外再装一份 Node。
-    /// </remarks>
+    // 解析桥接要使用的 node.exe 路径。
+    // 返回：可执行文件路径；未找到时为 null。
+    // 优先级：配置指定 → DSH 运行时自带（实测为 24.x，满足桥接要求的 ≥ 22.13）→ PATH。
+    // 复用 DSH 运行时可以避免在 C 盘之外再装一份 Node。
     private string? ResolveNodeExecutable()
     {
         if (!string.IsNullOrWhiteSpace(_config.Bridge.NodeExecutablePath)
@@ -365,9 +343,7 @@ public sealed class ServiceOrchestrator(AppConfig config)
         return null;
     }
 
-    /// <summary>
-    /// 在给定时间窗内探测"连续端口段"里第一个可连接的端口。
-    /// </summary>
+    // 在给定时间窗内探测"连续端口段"里第一个可连接的端口。
     private static async Task<int?> WaitForPortAsync(
         int startPort,
         int count,
@@ -392,7 +368,7 @@ public sealed class ServiceOrchestrator(AppConfig config)
         return null;
     }
 
-    /// <summary>在给定时间窗内等待单个端口就绪。</summary>
+    // 在给定时间窗内等待单个端口就绪。
     private static async Task<bool> WaitForSinglePortAsync(
         int port,
         TimeSpan timeout,

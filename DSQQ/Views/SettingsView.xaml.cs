@@ -11,28 +11,19 @@ using DSQQ.Services;
 
 namespace DSQQ.Views;
 
-/// <summary>
-/// 设置页：编辑并保存 <see cref="AppConfig"/>，保存后立即生效。
-/// </summary>
-/// <remarks>
-/// 健壮性约定：
-/// <list type="bullet">
-/// <item>读取用户输入一律走安全解析（<see cref="TryGetPort"/> / <see cref="TryGetInt"/>），
-/// 输入非法时给出**字段级**提示而不是抛异常或静默取默认值；</item>
-/// <item>保存前做一次整体校验，任何一项不合法就整体拒绝 —— 避免存进一份半对半错的配置；
-/// </item>
-/// <item>路径输入框在编辑时就实时反馈"目录存在 / 不存在"，因为路径写错是启动失败的头号原因。</item>
-/// </list>
-/// </remarks>
+// 设置页：编辑并保存 AppConfig，保存后立即生效。
+// 健壮性约定：
+// 读取用户输入一律走安全解析（TryGetPort / TryGetInt），
+// 输入非法时给出字段级提示而不是抛异常或静默取默认值；
+// 保存前做一次整体校验，任何一项不合法就整体拒绝 —— 避免存进一份半对半错的配置；
+// 路径输入框在编辑时就实时反馈"目录存在 / 不存在"，因为路径写错是启动失败的头号原因。
 public partial class SettingsView : UserControl
 {
     private readonly AppServices _services;
 
-    /// <summary>
-    /// 初始化设置页。
-    /// </summary>
-    /// <param name="services">应用服务宿主。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="services"/> 为 <c>null</c>。</exception>
+    // 初始化设置页。
+    // 参数 services：应用服务宿主。
+    // 异常 ArgumentNullException：为 null。
     public SettingsView(AppServices services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -46,7 +37,7 @@ public partial class SettingsView : UserControl
         BridgeDirBox.LostFocus += (_, _) => ValidateDirectory(BridgeDirBox, BridgeDirState);
     }
 
-    /// <summary>从当前配置填充界面。</summary>
+    // 从当前配置填充界面。
     private void ReloadFromConfig()
     {
         var config = _services.Config;
@@ -78,7 +69,7 @@ public partial class SettingsView : UserControl
         StatusText.Text = "已载入当前配置。";
     }
 
-    /// <summary>保存设置。</summary>
+    // 保存设置。
     private void OnSaveClick(object sender, RoutedEventArgs e)
     {
         try
@@ -101,7 +92,7 @@ public partial class SettingsView : UserControl
         }
     }
 
-    /// <summary>放弃修改并重新载入。</summary>
+    // 放弃修改并重新载入。
     private void OnReloadClick(object sender, RoutedEventArgs e)
     {
         var reloaded = AppConfigStore.TryLoad(out var error);
@@ -116,7 +107,7 @@ public partial class SettingsView : UserControl
         StatusText.Text = "已放弃修改并重载磁盘上的配置。";
     }
 
-    /// <summary>打开配置文件所在目录（便于手工编辑或备份）。</summary>
+    // 打开配置文件所在目录（便于手工编辑或备份）。
     private void OnOpenConfigFolderClick(object sender, RoutedEventArgs e)
     {
         try
@@ -140,10 +131,8 @@ public partial class SettingsView : UserControl
         }
     }
 
-    /// <summary>
-    /// 用界面上的值构造配置对象。
-    /// </summary>
-    /// <exception cref="InvalidOperationException">存在非法输入时抛出，消息中含字段名。</exception>
+    // 用界面上的值构造配置对象。
+    // 异常 InvalidOperationException：存在非法输入时抛出，消息中含字段名。
     private AppConfig BuildConfigFromUi()
     {
         var config = _services.Config;
@@ -185,7 +174,7 @@ public partial class SettingsView : UserControl
         return config;
     }
 
-    /// <summary>读取必填文本字段。</summary>
+    // 读取必填文本字段。
     private static string RequireText(TextBox box, string fieldName)
     {
         var value = box.Text.Trim();
@@ -197,10 +186,10 @@ public partial class SettingsView : UserControl
         return value;
     }
 
-    /// <summary>读取端口字段（1~65535）。</summary>
+    // 读取端口字段（1~65535）。
     private static int RequirePort(TextBox box, string fieldName) => RequireInt(box, fieldName, 1, 65535);
 
-    /// <summary>读取整数字段并做范围校验。</summary>
+    // 读取整数字段并做范围校验。
     private static int RequireInt(TextBox box, string fieldName, int min, int max)
     {
         if (!int.TryParse(box.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
@@ -216,7 +205,7 @@ public partial class SettingsView : UserControl
         return value;
     }
 
-    /// <summary>校验目录是否存在并更新提示文本。</summary>
+    // 校验目录是否存在并更新提示文本。
     private static void ValidateDirectory(TextBox box, TextBlock stateText)
     {
         var path = box.Text.Trim();

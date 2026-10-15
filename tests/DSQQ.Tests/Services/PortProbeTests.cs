@@ -4,17 +4,13 @@ using DSQQ.Services;
 
 namespace DSQQ.Tests.Services;
 
-/// <summary>
-/// <see cref="PortProbe"/> 的行为约束。
-/// </summary>
-/// <remarks>
-/// 用真实 <see cref="TcpListener"/> 建立"已监听"基线，而不是打桩：
-/// 端口探测的价值恰恰在于它与操作系统网络栈的真实交互，打桩会把被测逻辑架空。
-/// 监听一律绑定 <c>127.0.0.1</c>，与本程序的实际使用方式一致。
-/// </remarks>
+// PortProbe 的行为约束。
+// 用真实 TcpListener 建立"已监听"基线，而不是打桩：
+// 端口探测的价值恰恰在于它与操作系统网络栈的真实交互，打桩会把被测逻辑架空。
+// 监听一律绑定 127.0.0.1，与本程序的实际使用方式一致。
 public sealed class PortProbeTests
 {
-    /// <summary>占用一个由系统分配的临时端口并返回监听器；调用方负责释放。</summary>
+    // 占用一个由系统分配的临时端口并返回监听器；调用方负责释放。
     private static TcpListener ListenOnFreePort()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -22,7 +18,7 @@ public sealed class PortProbeTests
         return listener;
     }
 
-    /// <summary>取得监听器实际绑定的端口号。</summary>
+    // 取得监听器实际绑定的端口号。
     private static int PortOf(TcpListener listener) => ((IPEndPoint)listener.LocalEndpoint).Port;
 
     [Fact]
@@ -141,10 +137,8 @@ public sealed class PortProbeTests
         }
     }
 
-    /// <summary>
-    /// 取得一对相邻端口：返回 true 时 firstPort 的端口号恰比 secondPort 大 1。
-    /// </summary>
-    /// <remarks>两个监听器均保持已开始监听状态，调用方用完必须自行 Stop；失败时全部已释放。</remarks>
+    // 取得一对相邻端口：返回 true 时 firstPort 的端口号恰比 secondPort 大 1。
+    // 两个监听器均保持已开始监听状态，调用方用完必须自行 Stop；失败时全部已释放。
     private static bool TryBindAdjacentPair(out TcpListener firstPort, out TcpListener secondPort)
     {
         const int Attempts = 30;

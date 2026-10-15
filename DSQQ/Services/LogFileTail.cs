@@ -6,37 +6,33 @@ using System.Threading.Channels;
 
 namespace DSQQ.Services;
 
-/// <summary>日志级别（按文本关键字粗分，够用且不依赖格式约定）。</summary>
+// 日志级别（按文本关键字粗分，够用且不依赖格式约定）。
 public enum LogLevel
 {
-    /// <summary>普通信息。</summary>
+    // 普通信息。
     Info,
 
-    /// <summary>调试/详细。</summary>
+    // 调试/详细。
     Debug,
 
-    /// <summary>警告。</summary>
+    // 警告。
     Warn,
 
-    /// <summary>错误。</summary>
+    // 错误。
     Error,
 }
 
-/// <summary>一行日志。</summary>
-/// <param name="Source">来源名称（如"桥接"/"SnowLuma"）。</param>
-/// <param name="Timestamp">从行首提取到的时间（形如 HH:mm:ss）；提取不到时为 null。</param>
-/// <param name="Level">推断出的级别。</param>
-/// <param name="Text">原始行内容。</param>
+// 一行日志。
+// 参数 Source：来源名称（如"桥接"/"SnowLuma"）。
+// 参数 Timestamp：从行首提取到的时间（形如 HH:mm:ss）；提取不到时为 null。
+// 参数 Level：推断出的级别。
+// 参数 Text：原始行内容。
 public sealed record LogLine(string Source, DateTime? Timestamp, LogLevel Level, string Text);
 
-/// <summary>
-/// 单个日志文件的跟随读取。
-/// </summary>
-/// <remarks>
-/// 用 <see cref="FileSystemWatcher"/> 通知变化，但**读取靠字节偏移量**：
-/// 文件被追加时只读新增部分，避免每次重读整个文件（桥接日志可达数十 MB）。
-/// 去抖是必需的 —— Windows 上一次写入可能触发多个 Changed 事件。
-/// </remarks>
+// 单个日志文件的跟随读取。
+// 用 FileSystemWatcher 通知变化，但读取靠字节偏移量：
+// 文件被追加时只读新增部分，避免每次重读整个文件（桥接日志可达数十 MB）。
+// 去抖是必需的 —— Windows 上一次写入可能触发多个 Changed 事件。
 public sealed class LogFileTail : IDisposable
 {
     private readonly string _path;
@@ -50,12 +46,12 @@ public sealed class LogFileTail : IDisposable
     private Timer? _debounce;
     private bool _disposed;
 
-    /// <summary>初始化并读取末尾若干行作为初始内容。</summary>
-    /// <param name="source">来源名称，用于界面展示。</param>
-    /// <param name="path">日志文件绝对路径。</param>
-    /// <param name="initialLines">初始加载的尾部行数。</param>
-    /// <param name="maxBytesPerRead">单次读取字节上限，防止大文件一次性读入。</param>
-    /// <param name="debounceMs">文件变化去抖延迟（毫秒）。</param>
+    // 初始化并读取末尾若干行作为初始内容。
+    // 参数 source：来源名称，用于界面展示。
+    // 参数 path：日志文件绝对路径。
+    // 参数 initialLines：初始加载的尾部行数。
+    // 参数 maxBytesPerRead：单次读取字节上限，防止大文件一次性读入。
+    // 参数 debounceMs：文件变化去抖延迟（毫秒）。
     public LogFileTail(
         string source,
         string path,
@@ -77,17 +73,17 @@ public sealed class LogFileTail : IDisposable
         StartWatching();
     }
 
-    /// <summary>来源名称。</summary>
+    // 来源名称。
     public string Source { get; }
 
-    /// <summary>日志文件路径。</summary>
+    // 日志文件路径。
     public string Path => _path;
 
-    /// <summary>异步读取新行的流。</summary>
+    // 异步读取新行的流。
     public IAsyncEnumerable<LogLine> ReadAllAsync(CancellationToken cancellationToken)
         => _channel.Reader.ReadAllAsync(cancellationToken);
 
-    /// <summary>当前读取位置（字节）。</summary>
+    // 当前读取位置（字节）。
     public long Position
     {
         get
@@ -99,12 +95,10 @@ public sealed class LogFileTail : IDisposable
         }
     }
 
-    /// <summary>文件是否存在。</summary>
+    // 文件是否存在。
     public bool Exists => File.Exists(_path);
 
-    /// <summary>
-    /// 读取文件尾部若干行，并把读取位置定位到文件末尾。
-    /// </summary>
+    // 读取文件尾部若干行，并把读取位置定位到文件末尾。
     private void PositionAtEnd(int initialLines)
     {
         try
@@ -135,7 +129,7 @@ public sealed class LogFileTail : IDisposable
         }
     }
 
-    /// <summary>把给定偏移调整到行首（避免从半行开始读）。</summary>
+    // 把给定偏移调整到行首（避免从半行开始读）。
     private static long FindLineStart(string path, long offset)
     {
         if (offset <= 0)
@@ -163,7 +157,7 @@ public sealed class LogFileTail : IDisposable
         return offset;
     }
 
-    /// <summary>读取 [start, end) 范围内的所有行。</summary>
+    // 读取 [start, end) 范围内的所有行。
     private IEnumerable<string> ReadRange(long start, long end)
     {
         if (end <= start)
@@ -186,7 +180,7 @@ public sealed class LogFileTail : IDisposable
         }
     }
 
-    /// <summary>启动文件监听。</summary>
+    // 启动文件监听。
     private void StartWatching()
     {
         var directory = System.IO.Path.GetDirectoryName(_path);
@@ -214,7 +208,7 @@ public sealed class LogFileTail : IDisposable
         }
     }
 
-    /// <summary>文件变化：去抖后触发一次增量读取。</summary>
+    // 文件变化：去抖后触发一次增量读取。
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
         lock (_gate)
@@ -229,7 +223,7 @@ public sealed class LogFileTail : IDisposable
         }
     }
 
-    /// <summary>从上次位置读到文件末尾。</summary>
+    // 从上次位置读到文件末尾。
     private void ReadNewContent()
     {
         try
@@ -282,13 +276,13 @@ public sealed class LogFileTail : IDisposable
         }
     }
 
-    /// <summary>把原始行解析为 <see cref="LogLine"/>。</summary>
+    // 把原始行解析为 LogLine。
     private LogLine Parse(string line)
     {
         return new LogLine(Source, ExtractTimestamp(line), DetectLevel(line), line);
     }
 
-    /// <summary>从行首提取时间。支持 "HH:mm:ss" 与 "[HH:mm:ss]" 两种写法。</summary>
+    // 从行首提取时间。支持 "HH:mm:ss" 与 "[HH:mm:ss]" 两种写法。
     private static DateTime? ExtractTimestamp(string line)
     {
         var span = line.AsSpan().TrimStart();
@@ -308,7 +302,7 @@ public sealed class LogFileTail : IDisposable
             : null;
     }
 
-    /// <summary>按关键字推断级别。</summary>
+    // 按关键字推断级别。
     private static LogLevel DetectLevel(string line)
     {
         if (line.Contains("ERROR", StringComparison.OrdinalIgnoreCase)
@@ -335,7 +329,6 @@ public sealed class LogFileTail : IDisposable
         return LogLevel.Info;
     }
 
-    /// <inheritdoc />
     public void Dispose()
     {
         lock (_gate)
