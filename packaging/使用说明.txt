@@ -1,0 +1,35 @@
+DSQQ —— QQ 桥接面板
+====================
+
+两个包任选其一：
+
+· DSQQ-<版本>-win-x64-framework-dependent.zip
+    体积小，需先安装 .NET 10 桌面运行时
+    https://dotnet.microsoft.com/download/dotnet/10.0
+
+· DSQQ-<版本>-win-x64-self-contained.zip
+    体积较大（约 170 MB），免安装运行时，解压后直接运行 DSQQ.exe
+
+运行
+----
+解压后双击 DSQQ.exe 即可。首次运行会在以下位置生成配置：
+
+    %APPDATA%\DSQQ\config.json
+
+配置里包含路径、端口，以及用 Windows DPAPI 加密后的凭据（只能由当前 Windows 用户解密，
+换机器或换用户后需要重新输入）。
+
+DSQQ 是 SnowLuma 与 qq-bridge 的使用方
+--------------------------------------
+· 本程序不包含、不捆绑上述两者的任何二进制；
+· 只负责启动/停止进程与展示状态，不会代为接受用户协议，也不会自动化扫码登录；
+· SnowLuma 是第三方 QQ 客户端，接入非官方协议存在账号风险，请勿使用主号。
+
+系统要求
+--------
+· Windows 10 / 11（x64）
+· 自包含包无需预装运行时；框架依赖包需要 .NET 10 桌面运行时
+
+许可证
+------
+MIT
