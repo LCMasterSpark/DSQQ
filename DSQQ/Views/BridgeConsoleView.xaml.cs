@@ -37,6 +37,13 @@ public partial class BridgeConsoleView : UserControl
     // 最近一次会话快照（供状态应用时复用，避免重复请求）。
     private IReadOnlyList<BridgeSessionEntry> _sessionsSnapshot = [];
 
+    // 上次载入的活跃度配置。保存时以它为基准做比对，只提交真正改动过的字段，
+    // 避免把用户没碰过的项一起写回（桥接是部分更新语义，未提交的保持现状）。
+    private ActivityConfig? _activityBaseline;
+
+    // 上次载入的配额。用于在保存前提示"上限提示语会被清空"这类整体覆盖导致的数据丢失。
+    private QuotaConfig? _quotaBaseline;
+
     // 初始化页面。
     // 参数 services：应用服务宿主。
     // 异常 ArgumentNullException：为 null。
@@ -97,6 +104,7 @@ public partial class BridgeConsoleView : UserControl
         await LoadGroupsAsync();
         await LoadPersonaAsync();
         await LoadQuotaAsync();
+        await LoadActivityAsync();
         await LoadTokensAsync();
         await LoadRolesAsync();
         await LoadSlangAsync();
@@ -190,7 +198,15 @@ public partial class BridgeConsoleView : UserControl
         PrivateLimitBox.Text = quota.PrivateLimit.ToString();
         ExemptBox.Text = string.Join(Environment.NewLine, quota.ExemptOwners);
         WarnTextBox.Text = quota.WarnText;
+        WarnMessageBox.Text = quota.WarnMessage;
+        QuotaImageBox.Text = quota.ImageConfigValue ?? string.Empty;
+        QuotaEffectiveImageText.Text = string.IsNullOrWhiteSpace(quota.EffectiveImage)
+            ? "（桥接未报告）"
+            : quota.EffectiveImage;
         TodayUsageText.Text = $"群 {quota.TodayGroup} 条 / 私聊 {quota.TodayPrivate} 条";
+
+        // 留档：保存时用来比对，防止整体提交把未显示的字段清空。
+        _quotaBaseline = quota;
     }
 
     // 载入 token 汇总与最近活动。
@@ -332,6 +348,25 @@ public partial class BridgeConsoleView : UserControl
             return;
         }
 
+        // 桥接的配额保存是**整体覆盖**，未提交的字段会被清空。
+        // 「上限提示语」在界面上容易被视为可选，一旦被清掉，达到上限时就没有那句话了，
+        // 所以这里显式确认一次，而不是默默提交。
+        var warnMessage = WarnMessageBox.Text.Trim();
+        if (warnMessage.Length == 0 && !string.IsNullOrWhiteSpace(_quotaBaseline?.WarnMessage))
+        {
+            var answer = System.Windows.MessageBox.Show(
+                "「上限提示语」已被清空，保存后将不再有这句话。仍要保存吗？",
+                "确认清空",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+
+            if (answer != System.Windows.MessageBoxResult.Yes)
+            {
+                QuotaHintText.Text = "已取消保存。";
+                return;
+            }
+        }
+
         var quota = new QuotaConfig
         {
             Enabled = QuotaEnabledCheck.IsChecked == true,
@@ -341,10 +376,30 @@ public partial class BridgeConsoleView : UserControl
             PrivateLimit = privateLimit,
             ExemptOwners = SplitLines(ExemptBox.Text),
             WarnText = WarnTextBox.Text,
+            WarnMessage = warnMessage,
+            ImageConfigValue = string.IsNullOrWhiteSpace(QuotaImageBox.Text) ? null : QuotaImageBox.Text.Trim(),
         };
 
         var ok = await _client.SaveQuotaAsync(quota);
         QuotaHintText.Text = ok ? "已保存（即时生效）" : "保存失败：请检查桥接是否在运行。";
+        if (ok)
+        {
+            // 重新载入以便把桥接侧计算出的 effectiveImage 等字段同步回来。
+            await LoadQuotaAsync();
+        }
+    }
+
+    // 上限提示语为空时给出可见提醒（保存时还会再确认一次）。
+    private void OnWarnMessageChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        QuotaHintText.Text = WarnMessageBox.Text.Trim().Length == 0
+            ? "注意：上限提示语为空 —— 达到上限时不会自动发出提示。"
+            : string.Empty;
     }
 
     // 把多行文本拆成去空的列表。
@@ -677,4 +732,174 @@ public partial class BridgeConsoleView : UserControl
             ? $"已保存 {preset}；需重启 DSH 生效。"
             : "保存被拒绝：可能缺少安全不变量（权限边界、令牌、角色注入等）或正文过短。";
     }
+    // ── 活跃度（唤醒与发送频率）──
+    //
+    // 字段清单只写一份：载入、增量收集、范围校验都从这张表驱动，
+    // 避免"加了个输入框但忘了接进某一边"这类只在运行时才暴露的错。
+
+    // 字段类型。Kind 会作为 JSON 值直接提交，所以取值必须是桥接认的类型。
+    private enum ActivityFieldKind
+    {
+        Int,
+        Bool,
+    }
+
+    // 一个可编辑字段：界面控件 ↔ JSON 键 ↔ 校验范围。
+    // 参数 Accessor：取文本框；Kind 为 Bool 时该文本框可省略。
+    private sealed record ActivityField(
+        Func<TextBox> Accessor,
+        string JsonKey,
+        string Label,
+        int Min,
+        int Max,
+        string Kind,
+        CheckBox? Toggle = null);
+
+    private List<ActivityField> ActivityFields() =>
+    [
+        new(() => SleepMinBox, "sleepMinMs", "最短潜水", 0, 86400000, "Int"),
+        new(() => SleepMaxBox, "sleepMaxMs", "最长潜水", 0, 86400000, "Int"),
+        new(() => MaxWakeHourBox, "maxWakePerHour", "每小时最多唤醒", 0, 1000, "Int"),
+        new(() => MaxWakeMinuteBox, "maxWakePerMinute", "每分钟最多唤醒", 0, 100, "Int"),
+        new(() => PreSleepWaitBox, "preSleepWaitMs", "睡前观察窗口", 0, 3600000, "Int"),
+        new(() => BatchWindowBox, "batchWindowMs", "多条消息合并窗口", 1000, 600000, "Int"),
+        new(() => MaxMessageCharsBox, "maxMessageChars", "单条消息最大字数", 1, 5000, "Int"),
+        new(() => MaxSendHourBox, "maxSendPerHour", "每小时最多发送", 0, 10000, "Int"),
+        new(() => MaxSendMinuteBox, "maxSendPerMinute", "每分钟最多发送", 0, 1000, "Int"),
+        new(() => BurstMinBox, "burstIntervalMinMs", "连发间隔下限", 0, 600000, "Int"),
+        new(() => BurstMaxBox, "burstIntervalMaxMs", "连发间隔上限", 0, 600000, "Int"),
+        new(() => GapBaseBox, "gapBaseMs", "基础间隔", 0, 600000, "Int"),
+        new(() => GapPerCharBox, "gapPerCharMs", "每字追加", 0, 1000, "Int"),
+        new(() => AutoReplyCheckBox, "autoReplyCheckMs", "回复检查间隔", 1000, 600000, "Int"),
+        new(() => new TextBox(), "burstEnabled", "连发开关", 0, 0, "Bool", BurstEnabledCheck),
+    ];
+
+    // 按 JSON 键取值（用于与基线比对，判断哪些字段真的被改动过）。
+    private static string? ReadActivityValue(ActivityConfig config, string jsonKey) => jsonKey switch
+    {
+        "sleepMinMs" => config.SleepMinMs.ToString(),
+        "sleepMaxMs" => config.SleepMaxMs.ToString(),
+        "maxWakePerHour" => config.MaxWakePerHour.ToString(),
+        "maxWakePerMinute" => config.MaxWakePerMinute.ToString(),
+        "preSleepWaitMs" => config.PreSleepWaitMs.ToString(),
+        "batchWindowMs" => config.BatchWindowMs.ToString(),
+        "maxMessageChars" => config.MaxMessageChars.ToString(),
+        "maxSendPerHour" => config.MaxSendPerHour.ToString(),
+        "maxSendPerMinute" => config.MaxSendPerMinute.ToString(),
+        "burstIntervalMinMs" => config.BurstIntervalMinMs.ToString(),
+        "burstIntervalMaxMs" => config.BurstIntervalMaxMs.ToString(),
+        "gapBaseMs" => config.GapBaseMs.ToString(),
+        "gapPerCharMs" => config.GapPerCharMs.ToString(),
+        "autoReplyCheckMs" => config.AutoReplyCheckMs.ToString(),
+        "burstEnabled" => config.BurstEnabled ? "true" : "false",
+        _ => null,
+    };
+
+    // 载入活跃度配置。
+    private async Task LoadActivityAsync()
+    {
+        var config = await _client.GetActivityConfigAsync();
+        if (config is null)
+        {
+            ActivityHintText.Text = "未能读取活跃度配置（桥接可能未运行）。";
+            return;
+        }
+
+        _activityBaseline = config;
+
+        foreach (var field in ActivityFields())
+        {
+            if (field.Kind == "Bool")
+            {
+                if (field.Toggle is not null)
+                {
+                    field.Toggle.IsChecked = config.BurstEnabled;
+                }
+
+                continue;
+            }
+
+            field.Accessor().Text = ReadActivityValue(config, field.JsonKey) ?? string.Empty;
+        }
+
+        var fmt = static (int ms) => ms <= 0 ? "不限" : $"{ms / 1000.0:0.#} 秒";
+        RecommendedSleepText.Text =
+            $"桥接推荐：潜水 {fmt(config.RecommendedSleepMinMs)} ~ {fmt(config.RecommendedSleepMaxMs)}；"
+            + "潜水时长过短会显得一直在刷屏，过长则错过话题。";
+
+        ActivityHintText.Text = "已载入。修改后点「保存改动」，只提交改动过的项。";
+    }
+
+    private async void OnReloadActivityClick(object sender, RoutedEventArgs e) => await LoadActivityAsync();
+
+    // 收集并保存改动。返回是否保存成功（部分失败时把桥接原话显示出来）。
+    private async Task<bool> SaveActivityAsync()
+    {
+        if (_activityBaseline is not { } baseline)
+        {
+            ActivityHintText.Text = "请先点「重新载入」取得当前配置，再修改保存。";
+            return false;
+        }
+
+        var changes = new Dictionary<string, object>();
+
+        foreach (var field in ActivityFields())
+        {
+            if (field.Kind == "Bool")
+            {
+                if (field.Toggle is null)
+                {
+                    continue;
+                }
+
+                var want = field.Toggle.IsChecked == true;
+                if (want != baseline.BurstEnabled)
+                {
+                    changes[field.JsonKey] = want;
+                }
+
+                continue;
+            }
+
+            var text = field.Accessor().Text.Trim();
+            var baselineText = ReadActivityValue(baseline, field.JsonKey) ?? string.Empty;
+            if (text == baselineText)
+            {
+                continue;   // 没动过就不提交，减少误改面
+            }
+
+            if (!int.TryParse(text, out var number))
+            {
+                ActivityHintText.Text = $"「{field.Label}」必须是整数（不能留空，也不要写单位）。";
+                return false;
+            }
+
+            if (number < field.Min || number > field.Max)
+            {
+                ActivityHintText.Text = $"「{field.Label}」必须在 {field.Min} ~ {field.Max} 之间。";
+                return false;
+            }
+
+            changes[field.JsonKey] = number;
+        }
+
+        if (changes.Count == 0)
+        {
+            ActivityHintText.Text = "没有检测到改动。";
+            return false;
+        }
+
+        var error = await _client.SaveActivityAsync(changes);
+        if (error is not null)
+        {
+            ActivityHintText.Text = $"保存失败：{error}";
+            return false;
+        }
+
+        ActivityHintText.Text = $"已保存 {changes.Count} 项（即时生效）。";
+        await LoadActivityAsync();   // 取回桥接侧的最终值，顺带清掉改动集
+        return true;
+    }
+
+    private async void OnSaveActivityClick(object sender, RoutedEventArgs e) => await SaveActivityAsync();
 }

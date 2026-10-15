@@ -154,6 +154,60 @@ public sealed class BridgeApiClient : IDisposable
     public Task<ActivityConfig?> GetActivityConfigAsync(CancellationToken cancellationToken = default)
         => GetAsync<ActivityConfig>("/api/config/activity", cancellationToken);
 
+    // 保存活跃度与发送节奏（部分更新：只提交改动过的字段，未提交的由桥接保持现状）。
+    // 返回：null 表示成功；否则为桥接给出的具体校验错误文本。
+    //
+    // 这里特意不用 bool：桥接对这个端点有一整套范围与联动校验
+    //（例如"最短潜水不能大于最长潜水"），只回一个 false 会让用户完全不知道哪里填错了。
+    public async Task<string?> SaveActivityAsync(
+        IReadOnlyDictionary<string, object> changes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+
+        try
+        {
+            using var response = await _http.PostAsJsonAsync(
+                "/api/config/activity", changes, JsonOptions, cancellationToken).ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return ExtractError(body) ?? $"桥接返回 {(int)response.StatusCode}";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return ex is TaskCanceledException ? "请求超时（桥接可能未运行）" : $"无法连接桥接：{ex.Message}";
+        }
+    }
+
+    // 从 {"ok":false,"error":"..."} 里取出错误文本；解析不出来时原样返回，便于排查。
+    private static string? ExtractError(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.TryGetProperty("error", out var error))
+            {
+                return error.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            // 非 JSON 响应：当作原文返回。
+        }
+
+        return body.Length > 300 ? body[..300] : body;
+    }
+
     // 发送一条测试消息。
     // 参数 target：目标（群号或 private:QQ 形式）。
     // 参数 text：消息内容。
@@ -204,8 +258,7 @@ public sealed class BridgeApiClient : IDisposable
         => PostAsync("/api/role", new { name }, cancellationToken);
 
     // 读取仿真提示词（预设内置的那一层）。
-    public Task<SimPromptResponse?> GetSimPromptAsync(string preset, CancellationToken cancellationToken = default)
-    {
+    public Task<SimPromptResponse?> GetSimPromptAsync(string preset, CancellationToken cancellationToken = default)    {
         ArgumentException.ThrowIfNullOrWhiteSpace(preset);
         return GetAsync<SimPromptResponse>($"/api/preset/sim-prompt?preset={Uri.EscapeDataString(preset)}", cancellationToken);
     }

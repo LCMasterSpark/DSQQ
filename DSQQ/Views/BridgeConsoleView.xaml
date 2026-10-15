@@ -152,6 +152,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="它叫什么" VerticalAlignment="Center" Margin="0,4,10,4" />
@@ -207,6 +209,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="群聊预警点 / 上限" VerticalAlignment="Center" Margin="0,4,10,4" />
@@ -231,8 +235,24 @@
                             <TextBlock Grid.Row="3" Grid.Column="0" Text="预警文案" VerticalAlignment="Center" Margin="0,4,10,4" />
                             <TextBox Grid.Row="3" Grid.Column="1" x:Name="WarnTextBox" Margin="0,4" />
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="今日已发" VerticalAlignment="Center" Margin="0,4,10,0" />
-                            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="TodayUsageText" Margin="0,4,0,0"
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="上限提示语" VerticalAlignment="Center" Margin="0,4,10,4" />
+                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,4">
+                                <TextBox x:Name="WarnMessageBox" TextChanged="OnWarnMessageChanged" />
+                                <TextBlock Margin="0,4,0,0" Opacity="0.6" TextWrapping="Wrap"
+                                           Text="达到上限时自动发出的那一句。注意：本页的保存是整体提交，这个框若被清空，保存后桥接侧也就没有这句了。" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="预警配图" VerticalAlignment="Center" Margin="0,4,10,4" />
+                            <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,4">
+                                <TextBox x:Name="QuotaImageBox" />
+                                <TextBlock Margin="0,4,0,0" Opacity="0.6" TextWrapping="Wrap"
+                                           Text="留空表示使用桥接的默认配图。当前生效：" />
+                                <TextBlock x:Name="QuotaEffectiveImageText" Margin="0,2,0,0"
+                                           FontFamily="Consolas, Microsoft YaHei UI" Opacity="0.75" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="今日已发" VerticalAlignment="Center" Margin="0,4,10,0" />
+                            <TextBlock Grid.Row="6" Grid.Column="1" x:Name="TodayUsageText" Margin="0,4,0,0"
                                        VerticalAlignment="Center" Opacity="0.75" />
                         </Grid>
                     </Border>
@@ -241,6 +261,146 @@
                         <Button x:Name="SaveQuotaButton" Content="保存配额" Width="110" Height="30"
                                 Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnSaveQuotaClick" />
                         <TextBlock x:Name="QuotaHintText" Margin="16,0,0,0" VerticalAlignment="Center" Opacity="0.65" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ══ 活跃度（唤醒与发送频率）══ -->
+            <TabItem Header="活跃度">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.75"
+                               Text="所有时间项单位均为毫秒（1000 = 1 秒）。保存为增量提交，只改动过的项会写入；未改动的由桥接保持现状。范围与联动关系由桥接校验（例如最短潜水不能大于最长潜水）。" />
+
+                    <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <!-- 分组一：唤醒频率 -->
+                            <Border Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                                <StackPanel>
+                                    <TextBlock Text="唤醒频率" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,4,0,10" Opacity="0.6" TextWrapping="Wrap"
+                                               Text="这一组决定被叫到之后多快能回话：合并窗口越小响应越碎但越快，每分钟唤醒上限越高越活跃。" />
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" MinWidth="230" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="最短潜水" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="SleepMinBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="0 ~ 86400000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="最长潜水（0 = 不限制）" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="SleepMaxBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="0 ~ 86400000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="每小时最多唤醒" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="MaxWakeHourBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="2" Grid.Column="2" Text="0 ~ 1000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="每分钟最多唤醒" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="3" Grid.Column="1" x:Name="MaxWakeMinuteBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="3" Grid.Column="2" Text="0 ~ 100" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="睡前观察窗口" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="PreSleepWaitBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="0 ~ 3600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="多条消息合并窗口" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="BatchWindowBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="1000 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                    </Grid>
+
+                                    <TextBlock x:Name="RecommendedSleepText" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 分组二：发送节奏 -->
+                            <Border Margin="0,12,0,0" Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                                <StackPanel>
+                                    <TextBlock Text="发送节奏与长度" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,4,0,10" Opacity="0.6" TextWrapping="Wrap"
+                                               Text="这一组决定她发得多快、一次能发多长。单条最大字数超出会被截断。" />
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" MinWidth="230" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="单条消息最大字数" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="MaxMessageCharsBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="1 ~ 5000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="每小时最多发送" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="MaxSendHourBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="0 ~ 10000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="每分钟最多发送" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="MaxSendMinuteBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="2" Grid.Column="2" Text="0 ~ 1000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="连发开关" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <CheckBox Grid.Row="3" Grid.Column="1" x:Name="BurstEnabledCheck" Content="允许多条连发" Margin="0,4" HorizontalAlignment="Left" />
+
+                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="连发间隔下限" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="BurstMinBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="5" Grid.Column="0" Text="连发间隔上限" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="BurstMaxBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="6" Grid.Column="0" Text="基础间隔" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="6" Grid.Column="1" x:Name="GapBaseBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="6" Grid.Column="2" Text="0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="7" Grid.Column="0" Text="每字追加" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="7" Grid.Column="1" x:Name="GapPerCharBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="7" Grid.Column="2" Text="0 ~ 1000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+
+                                        <TextBlock Grid.Row="8" Grid.Column="0" Text="回复检查间隔" VerticalAlignment="Center" Margin="0,4,10,4" />
+                                        <TextBox Grid.Row="8" Grid.Column="1" x:Name="AutoReplyCheckBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBlock Grid.Row="8" Grid.Column="2" Text="1000 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="ReloadActivityButton" Content="重新载入" Width="100" Height="30"
+                                Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnReloadActivityClick" />
+                        <Button x:Name="SaveActivityButton" Content="保存改动" Width="100" Height="30" Margin="8,0,0,0"
+                                Click="OnSaveActivityClick" />
+                        <TextBlock x:Name="ActivityHintText" Margin="16,0,0,0" VerticalAlignment="Center" Opacity="0.65" TextWrapping="Wrap" />
                     </StackPanel>
                 </Grid>
             </TabItem>

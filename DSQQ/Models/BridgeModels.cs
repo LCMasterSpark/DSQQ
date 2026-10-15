@@ -294,6 +294,20 @@ public sealed class QuotaConfig
     [JsonPropertyName("warnText")]
     public string WarnText { get; set; } = string.Empty;
 
+    // 达到上限时自动发出的那句话。
+    // 必须映射并原样回传：桥接的保存是整体覆盖，界面若不带上它，
+    // 用户在配额页点一次保存就会把这句配置清空。
+    [JsonPropertyName("warnMessage")]
+    public string WarnMessage { get; set; } = string.Empty;
+
+    // 预警时是否带配图（桥接侧为可空：null = 用默认图）。
+    [JsonPropertyName("imageConfigValue")]
+    public string? ImageConfigValue { get; set; }
+
+    // 实际生效的配图路径（只读，由桥接计算）。
+    [JsonPropertyName("effectiveImage")]
+    public string? EffectiveImage { get; set; }
+
     // 当日群聊已发条数。
     [JsonPropertyName("todayGroup")]
     public int TodayGroup { get; set; }
@@ -327,32 +341,72 @@ public sealed class ModelSelection
     public List<string> Options { get; set; } = [];
 }
 
-// 仿真活跃度配置（/api/config/activity）。
+// 活跃度与发送节奏（/api/config/activity）。
+// 字段与桥接的 activityState() 一一对应；桥接的 POST 是**部分更新**，
+// 只提交改动过的字段即可，未提交的保持现状（因此不会互相覆盖）。
 public sealed class ActivityConfig
 {
-    // 最短潜水毫秒数。
+    // ── 潜水与唤醒 —— 决定"被叫到之后多快能回话" ──
     [JsonPropertyName("sleepMinMs")]
     public int SleepMinMs { get; set; }
 
-    // 最长潜水毫秒数（0 表示不限制）。
+    // 0 = 不限制最长潜水。
     [JsonPropertyName("sleepMaxMs")]
     public int SleepMaxMs { get; set; }
+
+    // 桥接给出的推荐区间，界面上作参考展示。
+    [JsonPropertyName("recommendedSleepMinMs")]
+    public int RecommendedSleepMinMs { get; set; }
+
+    [JsonPropertyName("recommendedSleepMaxMs")]
+    public int RecommendedSleepMaxMs { get; set; }
 
     // 每小时最多唤醒次数。
     [JsonPropertyName("maxWakePerHour")]
     public int MaxWakePerHour { get; set; }
 
+    // 每分钟最多唤醒次数（频率上限里最"硬"的一道）。
+    [JsonPropertyName("maxWakePerMinute")]
+    public int MaxWakePerMinute { get; set; }
+
+    // 睡前静默观察窗口：越短越"敢睡"。
+    [JsonPropertyName("preSleepWaitMs")]
+    public int PreSleepWaitMs { get; set; }
+
+    // 多条消息合并成一次唤醒的窗口：越短响应越碎、但越快。
+    [JsonPropertyName("batchWindowMs")]
+    public int BatchWindowMs { get; set; }
+
+    // 多久检查一次"是否可以回消息"。
+    [JsonPropertyName("autoReplyCheckMs")]
+    public int AutoReplyCheckMs { get; set; }
+
+    // ── 发送节奏与单条长度 ──
+    [JsonPropertyName("burstEnabled")]
+    public bool BurstEnabled { get; set; }
+
     // 每小时最多发送条数。
     [JsonPropertyName("maxSendPerHour")]
     public int MaxSendPerHour { get; set; }
 
+    [JsonPropertyName("maxSendPerMinute")]
+    public int MaxSendPerMinute { get; set; }
+
+    [JsonPropertyName("burstIntervalMinMs")]
+    public int BurstIntervalMinMs { get; set; }
+
+    [JsonPropertyName("burstIntervalMaxMs")]
+    public int BurstIntervalMaxMs { get; set; }
+
+    [JsonPropertyName("gapBaseMs")]
+    public int GapBaseMs { get; set; }
+
+    [JsonPropertyName("gapPerCharMs")]
+    public int GapPerCharMs { get; set; }
+
     // 单条消息最大字数。
     [JsonPropertyName("maxMessageChars")]
     public int MaxMessageChars { get; set; }
-
-    // 每天几点检查可回消息（毫秒）。
-    [JsonPropertyName("autoReplyCheckMs")]
-    public int AutoReplyCheckMs { get; set; }
 }
 
 // 角色列表（/api/roles）。
