@@ -19,35 +19,29 @@ public sealed class AppConfig
     /// <summary>配置结构版本号，供将来做迁移使用。</summary>
     public int SchemaVersion { get; set; } = 1;
 
-    /// <summary>SnowLuma 相关设置。</summary>
+    /// <summary>SnowLuma 设置。</summary>
     public SnowLumaSettings SnowLuma { get; set; } = new();
 
-    /// <summary>qq-bridge 相关设置。</summary>
+    /// <summary>qq-bridge 设置。</summary>
     public BridgeSettings Bridge { get; set; } = new();
 
-    /// <summary>DSH（DeepSeek Harness）相关设置。</summary>
+    /// <summary>DSH 设置。</summary>
     public DshSettings Dsh { get; set; } = new();
 
-    /// <summary>启动行为设置。</summary>
+    /// <summary>启动行为。</summary>
     public StartupSettings Startup { get; set; } = new();
 
-    /// <summary>监控与日志设置。</summary>
+    /// <summary>监控与日志。</summary>
     public MonitoringSettings Monitoring { get; set; } = new();
 
-    /// <summary>机器人账号设置。</summary>
+    /// <summary>机器人账号。</summary>
     public OwnerSettings Owner { get; set; } = new();
 
-    /// <summary>未识别的 JSON 字段，原样保留以便向后兼容。</summary>
+    /// <summary>未识别的 JSON 字段，原样保留以兼容新旧版本。</summary>
     [JsonExtensionData]
     public Dictionary<string, System.Text.Json.JsonElement>? Extra { get; set; }
 
-    /// <summary>
-    /// 生成一套安全默认配置。
-    /// </summary>
-    /// <remarks>
-    /// 默认值取自本项目实际部署环境（<c>D:\SnowLuma</c> 与 <c>D:\qq-bridge</c>），
-    /// 但用户可在设置页改写；路径不存在时程序只提示，不崩溃。
-    /// </remarks>
+    /// <summary>生成默认配置（默认路径对应本机实际部署位置，可在设置页改写）。</summary>
     public static AppConfig CreateDefault() => new();
 }
 
@@ -63,24 +57,17 @@ public sealed class SnowLumaSettings
     /// <summary>偏好的 WebUI 端口。若被占用，SnowLuma 会顺延到 5100 等，程序必须实际探测。</summary>
     public int PreferredWebUiPort { get; set; } = 5099;
 
-    /// <summary>端口探测数量（从偏好端口起连续探测），用于应对端口顺延。</summary>
+    /// <summary>从偏好端口起连续探测的个数，用于应对端口顺延。</summary>
     public int PortProbeCount { get; set; } = 10;
 
-    /// <summary>
-    /// 是否自动对 <c>launcher.bat</c> 子进程设置 <c>SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD</c>。
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ 合规边界：SnowLuma EULA §5.4 禁止"通过自动化脚本部署其专有组件"，
-    /// 且协议同意与扫码登录必须由用户本人完成。因此本程序**默认不做任何自动化登录**；
-    /// 该开关仅供用户明确要求"由程序代为注入启动密码"时使用，默认关闭。
-    /// </remarks>
+    /// <summary>是否向 launcher.bat 注入 SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD。</summary>
+    /// <remarks>默认关闭：协议同意与扫码登录必须由用户本人完成（EULA §5.4 禁止自动化部署其专有组件）。</remarks>
     public bool InjectBootstrapPassword { get; set; }
 
     /// <summary>启动密码；仅在 <see cref="InjectBootstrapPassword"/> 为真时使用。</summary>
     public string? BootstrapPassword { get; set; }
 
-    /// <summary>WebUI 密码的 DPAPI 密文（含 <c>dpapi:</c> 前缀）。</summary>
-    /// <remarks>只在本机当前用户下可解密；换机器或换用户后读不出，会提示重新输入。</remarks>
+    /// <summary>WebUI 密码的 DPAPI 密文；仅本机当前用户可解密。</summary>
     public string? WebUiPasswordProtected { get; set; }
 
     /// <summary>WebUI 会话 Cookie 的 DPAPI 密文，用于免重复登录。</summary>
@@ -90,7 +77,7 @@ public sealed class SnowLumaSettings
 /// <summary>机器人账号相关设置。</summary>
 public sealed class OwnerSettings
 {
-    /// <summary>管理员（主人）QQ 号；用于白名单默认值与界面展示。</summary>
+    /// <summary>管理员 QQ 号。</summary>
     public long? Qq { get; set; }
 }
 
@@ -100,16 +87,13 @@ public sealed class BridgeSettings
     /// <summary>桥接项目根目录，例如 <c>D:\qq-bridge</c>。</summary>
     public string Directory { get; set; } = @"D:\qq-bridge";
 
-    /// <summary>控制台（HTTP API）端口，对应桥接 config.json 的 <c>consolePort</c>。</summary>
+    /// <summary>桥接控制台端口，对应桥接 config.json 的 consolePort。</summary>
     public int ConsolePort { get; set; } = 3100;
 
     /// <summary>桥接入口脚本的相对路径。</summary>
     public string EntryRelativePath { get; set; } = Path.Combine("src", "bridge.js");
 
-    /// <summary>
-    /// 使用的 node.exe 绝对路径；留空表示自动探测（优先复用 DSH 运行时自带的 node）。
-    /// </summary>
-    /// <remarks>桥接要求 Node ≥ 22.13；DSH 运行时通常已带符合要求的版本，复用可避免在 C 盘外额外安装。</remarks>
+    /// <summary>node.exe 路径；留空则自动探测（优先复用 DSH 运行时自带的 Node）。</summary>
     public string? NodeExecutablePath { get; set; }
 }
 
@@ -120,14 +104,11 @@ public sealed class DshSettings
     public string HomeDirectory { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh");
 
-    /// <summary>
-    /// Web API 端口。
-    /// </summary>
-    /// <remarks>注意：DSH 桌面版实测为 19387，而非文档里的 3080 —— 因此该值必须可配置并支持探测。</remarks>
+    /// <summary>DSH Web API 端口（桌面版实测 19387，并非文档里的 3080）。</summary>
     public int Port { get; set; } = 19387;
 }
 
-/// <summary>启动行为设置。</summary>
+/// <summary>启动行为。</summary>
 public sealed class StartupSettings
 {
     /// <summary>一键启动时是否拉起 SnowLuma。</summary>
@@ -143,7 +124,7 @@ public sealed class StartupSettings
     public bool AutoStartOnLaunch { get; set; }
 }
 
-/// <summary>监控与日志设置。</summary>
+/// <summary>监控与日志。</summary>
 public sealed class MonitoringSettings
 {
     /// <summary>状态轮询间隔（毫秒）。</summary>
@@ -155,7 +136,7 @@ public sealed class MonitoringSettings
     /// <summary>日志视图初始加载的尾部行数。</summary>
     public int TailLines { get; set; } = 2000;
 
-    /// <summary>单次日志读取的最大字节数，防止超大文件把内存打满。</summary>
+    /// <summary>单次日志读取字节上限，避免大文件占满内存。</summary>
     public int MaxReadBytesPerTick { get; set; } = 512 * 1024;
 
     /// <summary>触发托盘告警的关键字（大小写不敏感）。</summary>

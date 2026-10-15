@@ -11,19 +11,12 @@ public readonly record struct ServiceEndpoints(
     Uri BridgeConsole,
     Uri DshWeb)
 {
-    /// <summary>
-    /// 按配置解析三个服务的端点。
-    /// </summary>
+    /// <summary>按配置解析三个服务的端点。</summary>
     /// <param name="config">应用配置。</param>
-    /// <returns>解析结果。端口一律绑定到回环地址，本程序不会连接外部主机。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="config"/> 为 <c>null</c>。</exception>
     /// <remarks>
-    /// 设计说明：
-    /// <list type="bullet">
-    /// <item>统一走 <c>127.0.0.1</c> 而非 <c>localhost</c>：本机曾出现 <c>::1</c> 未监听而
-    /// <c>127.0.0.1</c> 监听的情况，写死 IPv4 可避免解析顺序带来的偶发连接失败；</item>
-    /// <item>端口全部来自配置，因为 SnowLuma 端口会被顺延、DSH 桌面版端口也不是文档默认值。</item>
-    /// </list>
+    /// 一律绑定 127.0.0.1 而非 localhost：本机出现过 ::1 未监听而 127.0.0.1 监听的情况，
+    /// 写死 IPv4 可避免解析顺序导致的连接失败。
     /// </remarks>
     public static ServiceEndpoints FromConfig(Models.AppConfig config)
     {
@@ -35,11 +28,9 @@ public readonly record struct ServiceEndpoints(
             BuildLoopbackUri(config.Dsh.Port));
     }
 
-    /// <summary>
-    /// 生成 <c>http://127.0.0.1:{port}</c> 形式的基地址。
-    /// </summary>
-    /// <param name="port">端口号。</param>
-    /// <exception cref="ArgumentOutOfRangeException">端口不在 1~65535 范围内。</exception>
+    /// <summary>生成 http://127.0.0.1:{port} 形式的基地址。</summary>
+    /// <param name="port">端口号（1~65535）。</param>
+    /// <exception cref="ArgumentOutOfRangeException">端口越界。</exception>
     public static Uri BuildLoopbackUri(int port)
     {
         if (port is < 1 or > 65535)
