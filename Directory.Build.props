@@ -12,21 +12,32 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- 生成 XML 文档：公共 API 强制写注释（配合下面的 CS1591） -->
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest</AnalysisLevel>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <!-- 禁止把 obj/bin 之外的中间产物散落；保留默认即可 -->
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <!--
+      不生成 XML 文档文件（注释已统一为普通 // 行注释，不参与 API 文档）。
+      原文件里这个属性被设置过两次（先 true 后 false），后者生效 ——
+      写两遍既有误导性也容易在下次改动时踩错，这里只保留一处。
+    -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
-  <!-- ── 版本与产品信息（发布到 GitHub 时会被 CI 覆盖 Version） ── -->
+  <!-- ── 版本与产品信息 ── -->
   <PropertyGroup>
-    <Version>0.1.0</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
+    <!--
+      只在这里定义 Version；AssemblyVersion / FileVersion 由它派生。
+      原先三者都写死，导致 -p:Version=x.y.z 只能改 Version，
+      文件属性里显示的仍是旧版本 —— 发布时看着像"版本号没生效"。
+    -->
+    <Version>0.2.0</Version>
+    <AssemblyVersion>$(Version).0</AssemblyVersion>
+    <FileVersion>$(Version).0</FileVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
     <Company>DSQQ</Company>
     <Product>DSQQ —— QQ 桥接面板</Product>
     <Authors>lenovo</Authors>
@@ -42,9 +53,6 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <WarningsAsErrors>nullable</WarningsAsErrors>
     <WarningLevel>5</WarningLevel>
-    <!-- 公共成员缺少 XML 注释 → 警告，保证注释不流于形式 -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
   <!-- ── 速度与体积：Release 打开优化，Debug 保证可调试 ── -->
