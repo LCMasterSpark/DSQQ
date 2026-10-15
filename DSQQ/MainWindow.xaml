@@ -133,13 +133,12 @@
                 </Grid>
             </TabItem>
 
-            <!-- 内容由代码后台注入（两页都依赖 AppServices） -->
+            <!-- 内容均由代码后台注入（都依赖 AppServices） -->
             <TabItem x:Name="ServiceTab" Header="服务管理" />
+            <TabItem x:Name="BridgeConsoleTab" Header="桥接控制台" />
+            <TabItem x:Name="SnowLumaTab" Header="SnowLuma" />
+            <TabItem x:Name="LogsTab" Header="日志" />
             <TabItem x:Name="SettingsTab" Header="设置" />
-            <TabItem Header="日志" IsEnabled="False">
-                <TextBlock Text="下一阶段实装：多文件跟随、级别过滤、关键字告警（见 README P3）"
-                           Margin="16" Opacity="0.6" />
-            </TabItem>
         </TabControl>
 
         <!-- ══ 底部：路径提示（排障第一现场）══ -->

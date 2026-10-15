@@ -67,8 +67,11 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
-        // 两个页面在此注入依赖：各自持有所需服务，主窗口不中转数据。
+        // 各页面在此注入依赖：各自持有需要的服务，主窗口不中转数据。
         ServiceTab.Content ??= new ServiceManagementView(_services);
+        BridgeConsoleTab.Content ??= new BridgeConsoleView(_services);
+        SnowLumaTab.Content ??= new SnowLumaView(_services);
+        LogsTab.Content ??= new LogsView(_services);
         SettingsTab.Content ??= new SettingsView(_services);
 
         // 托盘回调需要引用窗口，因此放在窗口就绪之后。

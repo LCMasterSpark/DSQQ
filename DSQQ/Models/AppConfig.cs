@@ -34,6 +34,9 @@ public sealed class AppConfig
     /// <summary>监控与日志设置。</summary>
     public MonitoringSettings Monitoring { get; set; } = new();
 
+    /// <summary>机器人账号设置。</summary>
+    public OwnerSettings Owner { get; set; } = new();
+
     /// <summary>未识别的 JSON 字段，原样保留以便向后兼容。</summary>
     [JsonExtensionData]
     public Dictionary<string, System.Text.Json.JsonElement>? Extra { get; set; }
@@ -75,6 +78,20 @@ public sealed class SnowLumaSettings
 
     /// <summary>启动密码；仅在 <see cref="InjectBootstrapPassword"/> 为真时使用。</summary>
     public string? BootstrapPassword { get; set; }
+
+    /// <summary>WebUI 密码的 DPAPI 密文（含 <c>dpapi:</c> 前缀）。</summary>
+    /// <remarks>只在本机当前用户下可解密；换机器或换用户后读不出，会提示重新输入。</remarks>
+    public string? WebUiPasswordProtected { get; set; }
+
+    /// <summary>WebUI 会话 Cookie 的 DPAPI 密文，用于免重复登录。</summary>
+    public string? SessionCookieProtected { get; set; }
+}
+
+/// <summary>机器人账号相关设置。</summary>
+public sealed class OwnerSettings
+{
+    /// <summary>管理员（主人）QQ 号；用于白名单默认值与界面展示。</summary>
+    public long? Qq { get; set; }
 }
 
 /// <summary>qq-bridge（QQ ↔ DSH 桥接）设置。</summary>
