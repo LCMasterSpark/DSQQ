@@ -40,6 +40,10 @@ public sealed class BridgeApiClient : IDisposable
     // 控制台基地址。
     public Uri BaseUri { get; }
 
+    // 最近一次读取失败的原因（成功时为 null）。
+    // 界面用它把"读不到"细化成具体原因，而不是一律显示"服务未启动"。
+    public string? LastError { get; private set; }
+
     // 读取运行状态。
     // 参数 cancellationToken：取消标记。
     // 返回：状态对象；请求失败或响应不可解析时返回 null。
@@ -178,8 +182,18 @@ public sealed class BridgeApiClient : IDisposable
     }
 
     // 读取仿真活跃度配置。
-    public Task<ActivityConfig?> GetActivityConfigAsync(CancellationToken cancellationToken = default)
-        => GetAsync<ActivityConfig>("/api/config/activity", cancellationToken);
+    //
+    // 注意响应有一层 activity 包装：{"ok":true,"activity":{...}}。
+    // 早先直接按 ActivityConfig 反序列化顶层，字段一个都对不上，
+    // 于是所有属性取默认值 0 —— 界面表现为"输入框全部显示 0"，
+    // 而不会报任何错。POST 侧不需要包装（见 SaveActivityAsync）。
+    public async Task<ActivityConfig?> GetActivityConfigAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await GetAsync<ActivityResponse>("/api/config/activity", cancellationToken)
+            .ConfigureAwait(false);
+
+        return response?.Activity;
+    }
 
     // 保存活跃度与发送节奏（部分更新：只提交改动过的字段，未提交的由桥接保持现状）。
     // 返回：null 表示成功；否则为桥接给出的具体校验错误文本。
@@ -336,17 +350,35 @@ public sealed class BridgeApiClient : IDisposable
             using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
+                // 记下状态码：404 说明端点不存在（版本不匹配），500 是桥接内部错误，
+                // 与"没启动"是完全不同的两回事，界面上要能区分。
+                LastError = $"{path} 返回 HTTP {(int)response.StatusCode}";
                 return null;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            return string.IsNullOrWhiteSpace(json)
-                ? null
-                : JsonSerializer.Deserialize<T>(json, JsonOptions);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                LastError = $"{path} 返回空响应";
+                return null;
+            }
+
+            var parsed = JsonSerializer.Deserialize<T>(json, JsonOptions);
+            if (parsed is null)
+            {
+                LastError = $"{path} 的响应无法解析为预期结构";
+            }
+
+            return parsed;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or OperationCanceledException)
         {
             // 网络与解析错误都属于"读不到"，由界面显示为未知状态。
+            // 但原因要留下来 —— 否则排查时只能看到一句"服务未启动"，
+            // 而真实情况可能是超时、DNS、TLS 或端口不对。
+            LastError = ex is TaskCanceledException or OperationCanceledException
+                ? $"{path} 请求超时（{_http.Timeout.TotalSeconds:0} 秒）"
+                : $"{path} 连接失败：{ex.Message}";
             return null;
         }
     }

@@ -282,7 +282,7 @@
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.75"
-                               Text="所有时间项单位均为毫秒（1000 = 1 秒）。保存为增量提交，只改动过的项会写入；未改动的由桥接保持现状。范围与联动关系由桥接校验（例如最短潜水不能大于最长潜水）。" />
+                               Text="时间为「秒」、频率为「次」、间隔为「毫秒」，见各行的单位标注。保存是增量提交：只写入改动过的项，未改动的保持现状；联动关系由桥接校验（例如最短潜水不能大于最长潜水）。" />
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
                         <TextBlock Text="预设" VerticalAlignment="Center" Opacity="0.75" />
@@ -307,7 +307,7 @@
 
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" MinWidth="230" />
+                                            <ColumnDefinition Width="300" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
@@ -321,28 +321,28 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Grid.Row="0" Grid.Column="0" Text="最短潜水" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="SleepMinBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="0 ~ 86400000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="SleepMinBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="秒 · 0 ~ 86400（0 = 不限制）" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="1" Grid.Column="0" Text="最长潜水（0 = 不限制）" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="SleepMaxBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="0 ~ 86400000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="SleepMaxBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="秒 · 0 ~ 86400（0 = 不限制）" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="2" Grid.Column="0" Text="每小时最多唤醒" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="MaxWakeHourBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="MaxWakeHourBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
                                         <TextBlock Grid.Row="2" Grid.Column="2" Text="0 ~ 1000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="3" Grid.Column="0" Text="每分钟最多唤醒" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="3" Grid.Column="1" x:Name="MaxWakeMinuteBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBox Grid.Row="3" Grid.Column="1" x:Name="MaxWakeMinuteBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
                                         <TextBlock Grid.Row="3" Grid.Column="2" Text="0 ~ 100" VerticalAlignment="Center" Margin="14,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="4" Grid.Column="0" Text="睡前观察窗口" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="PreSleepWaitBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="0 ~ 3600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="PreSleepWaitBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="秒 · 0 ~ 3600" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="5" Grid.Column="0" Text="多条消息合并窗口" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="BatchWindowBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="1000 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="BatchWindowBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="秒 · 1 ~ 600" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
                                     </Grid>
 
                                     <TextBlock x:Name="RecommendedSleepText" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap" />
@@ -358,7 +358,7 @@
 
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" MinWidth="230" />
+                                            <ColumnDefinition Width="300" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
@@ -375,39 +375,40 @@
                                         </Grid.RowDefinitions>
 
                                         <TextBlock Grid.Row="0" Grid.Column="0" Text="单条消息最大字数" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="MaxMessageCharsBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="MaxMessageCharsBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
                                         <TextBlock Grid.Row="0" Grid.Column="2" Text="1 ~ 5000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="1" Grid.Column="0" Text="每小时最多发送" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="MaxSendHourBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="MaxSendHourBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
                                         <TextBlock Grid.Row="1" Grid.Column="2" Text="0 ~ 10000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="2" Grid.Column="0" Text="每分钟最多发送" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="MaxSendMinuteBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="MaxSendMinuteBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
                                         <TextBlock Grid.Row="2" Grid.Column="2" Text="0 ~ 1000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="3" Grid.Column="0" Text="连发开关" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <CheckBox Grid.Row="3" Grid.Column="1" x:Name="BurstEnabledCheck" Content="允许多条连发" Margin="0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Row="3" Grid.Column="1" x:Name="BurstEnabledCheck" Content="允许多条连发（勾选后她可以分多条发同一段话）"
+                                      Margin="0,4" HorizontalAlignment="Left" Checked="OnActivityFieldChanged" Unchecked="OnActivityFieldChanged" />
 
                                         <TextBlock Grid.Row="4" Grid.Column="0" Text="连发间隔下限" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="BurstMinBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="BurstMinBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="毫秒 · 0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="5" Grid.Column="0" Text="连发间隔上限" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="BurstMaxBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="BurstMaxBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="毫秒 · 0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="6" Grid.Column="0" Text="基础间隔" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="6" Grid.Column="1" x:Name="GapBaseBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="6" Grid.Column="2" Text="0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="6" Grid.Column="1" x:Name="GapBaseBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="6" Grid.Column="2" Text="毫秒 · 0 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="7" Grid.Column="0" Text="每字追加" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="7" Grid.Column="1" x:Name="GapPerCharBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
+                                        <TextBox Grid.Row="7" Grid.Column="1" x:Name="GapPerCharBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
                                         <TextBlock Grid.Row="7" Grid.Column="2" Text="0 ~ 1000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="8" Grid.Column="0" Text="回复检查间隔" VerticalAlignment="Center" Margin="0,4,10,4" />
-                                        <TextBox Grid.Row="8" Grid.Column="1" x:Name="AutoReplyCheckBox" Width="120" HorizontalAlignment="Left" Margin="0,4" />
-                                        <TextBlock Grid.Row="8" Grid.Column="2" Text="1000 ~ 600000" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBox Grid.Row="8" Grid.Column="1" x:Name="AutoReplyCheckBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
+                                        <TextBlock Grid.Row="8" Grid.Column="2" Text="秒 · 1 ~ 600" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
                                     </Grid>
                                 </StackPanel>
                             </Border>

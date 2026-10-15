@@ -111,7 +111,9 @@ public partial class BridgeConsoleView : UserControl
                 break;
             }
 
-            StatusText.Text = $"桥接尚未就绪，正在重试（{attempt}/{Attempts - 1}）…";
+            // 把具体原因显示出来：长期只显示"服务未启动"会把超时、404、解析失败
+            // 这类完全不同的故障混为一谈，排查时无从下手。
+            StatusText.Text = $"桥接读取失败（第 {attempt} 次）：{_client.LastError ?? "未知原因"}，正在重试…";
             await Task.Delay(TimeSpan.FromSeconds(1 + attempt));
         }
 
@@ -134,7 +136,7 @@ public partial class BridgeConsoleView : UserControl
         var status = await GetStatusWithRetryAsync();
         if (status is null)
         {
-            StatusText.Text = $"无法读取桥接（{_services.Endpoints.BridgeConsole}）—— 服务未启动或端口不对。";
+            StatusText.Text = $"无法读取桥接（{_services.Endpoints.BridgeConsole}）：{_client.LastError ?? "服务未启动或端口不对"}";
             HintText.Text = "提示：可在「服务管理」页启动桥接，或在「设置」页修正端口；桥接就绪后点「重新载入」即可。";
             return;
         }
@@ -848,6 +850,8 @@ public partial class BridgeConsoleView : UserControl
 
     // 一个可编辑字段：界面控件 ↔ JSON 键 ↔ 校验范围。
     // 参数 Accessor：取文本框；Kind 为 Bool 时该文本框可省略。
+    // 参数 Unit：界面单位。时间类字段用 "s"（秒），桥接实际收毫秒，读写时自动换算 ——
+    //   让用户填 300 而不是 300000，这是这一页最主要的易用性问题。
     private sealed record ActivityField(
         Func<TextBox> Accessor,
         string JsonKey,
@@ -855,25 +859,53 @@ public partial class BridgeConsoleView : UserControl
         int Min,
         int Max,
         string Kind,
-        CheckBox? Toggle = null);
+        string Unit = "",
+        CheckBox? Toggle = null)
+    {
+        // 输入框里的数字所允许的范围（秒类字段的边界要换算回显示单位）。
+        public int DisplayMin => Unit == "s" ? Min / 1000 : Min;
+
+        public int DisplayMax => Unit == "s" ? Max / 1000 : Max;
+
+        // 行尾的范围提示。
+        public string RangeHint
+        {
+            get
+            {
+                if (Kind == "Bool")
+                {
+                    return string.Empty;
+                }
+
+                var unit = Models.ActivityUnitConverter.UnitLabel(Unit);
+                var extra = JsonKey == "sleepMaxMs" ? "（0 = 不限制）" : string.Empty;
+                return $"{unit} · {DisplayMin} ~ {DisplayMax}{extra}";
+            }
+        }
+
+        // 越界时的说明。
+        public string RangeError =>
+            $"「{Label}」应在 {DisplayMin} ~ {DisplayMax} 之间（{Models.ActivityUnitConverter.UnitLabel(Unit)}）";
+    }
 
     private List<ActivityField> ActivityFields() =>
     [
-        new(() => SleepMinBox, "sleepMinMs", "最短潜水", 0, 86400000, "Int"),
-        new(() => SleepMaxBox, "sleepMaxMs", "最长潜水", 0, 86400000, "Int"),
+        // 时间类用秒（桥接收毫秒，读写自动换算），其余为次数或毫秒。
+        new(() => SleepMinBox, "sleepMinMs", "最短潜水", 0, 86_400_000, "Int", "s"),
+        new(() => SleepMaxBox, "sleepMaxMs", "最长潜水", 0, 86_400_000, "Int", "s"),
         new(() => MaxWakeHourBox, "maxWakePerHour", "每小时最多唤醒", 0, 1000, "Int"),
         new(() => MaxWakeMinuteBox, "maxWakePerMinute", "每分钟最多唤醒", 0, 100, "Int"),
-        new(() => PreSleepWaitBox, "preSleepWaitMs", "睡前观察窗口", 0, 3600000, "Int"),
-        new(() => BatchWindowBox, "batchWindowMs", "多条消息合并窗口", 1000, 600000, "Int"),
+        new(() => PreSleepWaitBox, "preSleepWaitMs", "睡前观察窗口", 0, 3_600_000, "Int", "s"),
+        new(() => BatchWindowBox, "batchWindowMs", "多条消息合并窗口", 1_000, 600_000, "Int", "s"),
         new(() => MaxMessageCharsBox, "maxMessageChars", "单条消息最大字数", 1, 5000, "Int"),
-        new(() => MaxSendHourBox, "maxSendPerHour", "每小时最多发送", 0, 10000, "Int"),
+        new(() => MaxSendHourBox, "maxSendPerHour", "每小时最多发送", 0, 10_000, "Int"),
         new(() => MaxSendMinuteBox, "maxSendPerMinute", "每分钟最多发送", 0, 1000, "Int"),
-        new(() => BurstMinBox, "burstIntervalMinMs", "连发间隔下限", 0, 600000, "Int"),
-        new(() => BurstMaxBox, "burstIntervalMaxMs", "连发间隔上限", 0, 600000, "Int"),
-        new(() => GapBaseBox, "gapBaseMs", "基础间隔", 0, 600000, "Int"),
-        new(() => GapPerCharBox, "gapPerCharMs", "每字追加", 0, 1000, "Int"),
-        new(() => AutoReplyCheckBox, "autoReplyCheckMs", "回复检查间隔", 1000, 600000, "Int"),
-        new(() => new TextBox(), "burstEnabled", "连发开关", 0, 0, "Bool", BurstEnabledCheck),
+        new(() => BurstMinBox, "burstIntervalMinMs", "连发间隔下限", 0, 600_000, "Int", "ms"),
+        new(() => BurstMaxBox, "burstIntervalMaxMs", "连发间隔上限", 0, 600_000, "Int", "ms"),
+        new(() => GapBaseBox, "gapBaseMs", "基础间隔", 0, 600_000, "Int", "ms"),
+        new(() => GapPerCharBox, "gapPerCharMs", "每字追加", 0, 1000, "Int", "ms"),
+        new(() => AutoReplyCheckBox, "autoReplyCheckMs", "检查可回消息的间隔", 1_000, 600_000, "Int", "s"),
+        new(() => new TextBox(), "burstEnabled", "连发开关", 0, 0, "Bool", "", BurstEnabledCheck),
     ];
 
     // 按 JSON 键取值（用于与基线比对，判断哪些字段真的被改动过）。
@@ -921,8 +953,11 @@ public partial class BridgeConsoleView : UserControl
                 continue;
             }
 
-            field.Accessor().Text = ReadActivityValue(config, field.JsonKey) ?? string.Empty;
+            var raw = ReadActivityValue(config, field.JsonKey) ?? string.Empty;
+            field.Accessor().Text = Models.ActivityUnitConverter.ToDisplay(raw, field.Unit);
         }
+
+        UpdateActivityValidation();
 
         var fmt = static (int ms) => ms <= 0 ? "不限" : $"{ms / 1000.0:0.#} 秒";
         RecommendedSleepText.Text =
@@ -932,7 +967,8 @@ public partial class BridgeConsoleView : UserControl
         ActivityHintText.Text = $"已载入（当前 {MatchActivityPreset(config) ?? "自定义"}）。修改后点「保存改动」，只提交改动过的项。";
     }
 
-    // 与当前配置完全一致的预设名；都不匹配时返回 null（即"自定义"）。
+    // 与给定配置完全一致的预设名；都不匹配时返回 null（即"自定义"）。
+    // 这里比对的是桥接原始值（毫秒），界面上的匹配判断走 MatchActivityPresetCurrent。
     // 注意：元组不支持 ?. 取成员，所以先投影出名字再 FirstOrDefault。
     private static string? MatchActivityPreset(ActivityConfig config)
         => Models.ActivityPresets.All
@@ -941,6 +977,128 @@ public partial class BridgeConsoleView : UserControl
             .FirstOrDefault();
 
     private async void OnReloadActivityClick(object sender, RoutedEventArgs e) => await LoadActivityAsync();
+
+    // 输入框变化：把该字段标红／恢复，并给出总体提示。
+    // 只做即时反馈，真正的拦截仍在保存时（避免边打字边弹错误）。
+    private void OnActivityFieldChanged(object sender, RoutedEventArgs e) => UpdateActivityValidation();
+
+    private void UpdateActivityValidation()
+    {
+        if (_activityBaseline is null || !IsLoaded)
+        {
+            return;
+        }
+
+        var invalid = 0;
+
+        foreach (var field in ActivityFields())
+        {
+            if (field.Kind == "Bool")
+            {
+                continue;
+            }
+
+            var box = field.Accessor();
+            var text = box.Text.Trim();
+
+            var isBad = text.Length == 0
+                || !Models.ActivityUnitConverter.TryToBridgeValue(text, field.Unit, out var value)
+                || value < field.Min
+                || value > field.Max;
+
+            box.Foreground = isBad ? InvalidBrush : NormalBrush;
+            box.ToolTip = isBad ? field.RangeError : field.RangeHint;
+
+            if (isBad)
+            {
+                invalid++;
+            }
+        }
+
+        if (invalid > 0)
+        {
+            ActivityHintText.Text = $"有 {invalid} 项填写不合法（已标红，鼠标悬停可看范围）。";
+            return;
+        }
+
+        var changed = CountActivityChanges();
+        var preset = MatchActivityPresetCurrent();
+        ActivityHintText.Text = changed == 0
+            ? $"当前配置与预设「{preset ?? "自定义"}」一致，未检测到改动。"
+            : $"有 {changed} 项待保存（当前 {preset ?? "自定义"}）。";
+    }
+
+    // 统计相对基线改动了几项（不提交）。
+    private int CountActivityChanges()
+    {
+        if (_activityBaseline is not { } baseline)
+        {
+            return 0;
+        }
+
+        var n = 0;
+        foreach (var field in ActivityFields())
+        {
+            if (field.Kind == "Bool")
+            {
+                if (field.Toggle is not null && (field.Toggle.IsChecked == true) != baseline.BurstEnabled)
+                {
+                    n++;
+                }
+
+                continue;
+            }
+
+            var text = field.Accessor().Text.Trim();
+            var baselineText = Models.ActivityUnitConverter.ToDisplay(ReadActivityValue(baseline, field.JsonKey) ?? string.Empty, field.Unit);
+            if (text != baselineText)
+            {
+                n++;
+            }
+        }
+
+        return n;
+    }
+
+    // 用当前界面上的值判断匹配哪一档预设（保存前也能提示）。
+    // 说明：这里刻意不用桥接返回的原始值 —— 界面单位是秒，直接比对会永远不匹配。
+    private string? MatchActivityPresetCurrent()
+    {
+        foreach (var preset in Models.ActivityPresets.All)
+        {
+            var allMatch = true;
+            foreach (var (key, value) in preset.Values)
+            {
+                var field = ActivityFields().FirstOrDefault(f => f.JsonKey == key);
+                if (field is null)
+                {
+                    allMatch = false;
+                    break;
+                }
+
+                var shown = Models.ActivityUnitConverter.ToDisplay(value.ToString(), field.Unit);
+                if (field.Accessor().Text.Trim() != shown)
+                {
+                    allMatch = false;
+                    break;
+                }
+            }
+
+            if (allMatch)
+            {
+                return preset.Name;
+            }
+        }
+
+        return null;
+    }
+
+    // 输入合法／非法的前景色。用画刷资源而不是硬编码颜色，跟随主题。
+    private static readonly System.Windows.Media.Brush NormalBrush =
+        System.Windows.Media.Brushes.Black;
+
+    private static readonly System.Windows.Media.Brush InvalidBrush =
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xD1, 0x34, 0x38));
 
     // 收集并保存改动。返回是否保存成功（部分失败时把桥接原话显示出来）。
     // 参数 batchLabel：整组应用时的说明（预设名），用于把成功提示写得更明确。
@@ -973,21 +1131,21 @@ public partial class BridgeConsoleView : UserControl
             }
 
             var text = field.Accessor().Text.Trim();
-            var baselineText = ReadActivityValue(baseline, field.JsonKey) ?? string.Empty;
+            var baselineText = Models.ActivityUnitConverter.ToDisplay(ReadActivityValue(baseline, field.JsonKey) ?? string.Empty, field.Unit);
             if (text == baselineText)
             {
                 continue;   // 没动过就不提交，减少误改面
             }
 
-            if (!int.TryParse(text, out var number))
+            if (!Models.ActivityUnitConverter.TryToBridgeValue(text, field.Unit, out var number))
             {
-                ActivityHintText.Text = $"「{field.Label}」必须是整数（不能留空，也不要写单位）。";
+                ActivityHintText.Text = $"「{field.Label}」必须是数字（不能留空，也不要写单位）。";
                 return false;
             }
 
             if (number < field.Min || number > field.Max)
             {
-                ActivityHintText.Text = $"「{field.Label}」必须在 {field.Min} ~ {field.Max} 之间。";
+                ActivityHintText.Text = field.RangeError;
                 return false;
             }
 
@@ -1066,8 +1224,11 @@ public partial class BridgeConsoleView : UserControl
                 continue;
             }
 
-            field.Accessor().Text = value.ToString();
+            // value 是毫秒（桥接单位），秒类字段要换算成秒再显示。
+            field.Accessor().Text = Models.ActivityUnitConverter.ToDisplay(value.ToString(), field.Unit);
         }
+
+        UpdateActivityValidation();
 
         await SaveActivityAsync(preset.Name);
     }

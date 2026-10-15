@@ -18,11 +18,19 @@ public sealed class BridgeStatus
     public long? OwnerQQ { get; set; }
 
     // 允许的群号。
+    //
+    // 必须用 FlexibleStringListConverter：桥接把这些数**以数字**返回
+    //（"allowGroups": [415520021]），按 List<string> 解析会直接抛
+    // "The JSON value could not be converted to System.String"。
+    // 而 /api/status 是所有页面共用的入口 —— 一旦解析失败，整个控制台都读不到数据，
+    // 表现为"服务未启动"（但实际 TCP 连接是通的）。
     [JsonPropertyName("allowGroups")]
+    [JsonConverter(typeof(FlexibleStringListConverter))]
     public List<string> AllowGroups { get; set; } = [];
 
-    // 允许的私聊号。
+    // 允许的私聊号（同上，桥接同样返回数字）。
     [JsonPropertyName("allowPrivate")]
+    [JsonConverter(typeof(FlexibleStringListConverter))]
     public List<string> AllowPrivate { get; set; } = [];
 
     // 是否已暂停仿真。
@@ -92,14 +100,19 @@ public sealed class BridgeWhitelist
 }
 
 // 一组白/黑名单。
+// 两个列表都要用 FlexibleStringListConverter：桥接把 QQ 号以**数字**返回
+//（"private": [3551510664]），按 List<string> 解析会抛类型错误，
+// 导致整条 /api/whitelist 读不到（白名单页整页空白）。
 public sealed class WhitelistEntries
 {
     // 私聊号码。
     [JsonPropertyName("private")]
+    [JsonConverter(typeof(FlexibleStringListConverter))]
     public List<string> Private { get; set; } = [];
 
     // 群号。
     [JsonPropertyName("groups")]
+    [JsonConverter(typeof(FlexibleStringListConverter))]
     public List<string> Groups { get; set; } = [];
 }
 
@@ -393,6 +406,18 @@ public sealed class DshModelOption
 
     // 下拉框显示文本：模型名 + 标识，方便核对。
     public string Display => string.IsNullOrWhiteSpace(Name) ? Id : $"{Name}（{Id}）";
+}
+
+// /api/config/activity 的响应外壳。
+// 桥接把配置包在 activity 字段里，和 /api/status 把状态平铺在顶层不一样 ——
+// 少解析这一层不会报错，只会让所有字段静默变成 0。
+public sealed class ActivityResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("activity")]
+    public ActivityConfig? Activity { get; set; }
 }
 
 // 活跃度与发送节奏（/api/config/activity）。
