@@ -13,6 +13,8 @@
     <RootNamespace>DSQQ</RootNamespace>
     <AssemblyName>DSQQ</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 应用图标：用于 exe 在资源管理器/任务栏/Alt+Tab 的显示，也是 WPF 窗口的默认图标 -->
+    <ApplicationIcon>Resources\DSQQ.ico</ApplicationIcon>
     <!--
       不要在这里声明 <Platforms>x64</Platforms>。
       解决方案的默认平台是 Any CPU；项目若只声明 x64，VS 用 Debug|Any CPU 评估时找不到匹配组合，
@@ -23,6 +25,14 @@
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
+    <!--
+      显式关闭裁剪。WPF 依赖大量反射，裁剪后界面会在运行期炸；
+      关掉它同时消除单文件发布时那一批 IL2026（"JSON 序列化在裁剪下可能失效"）警告。
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- 发布目录去掉符号文件：桌面版不需要 pdb -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <!-- Metro 风格 UI：MahApps.Metro 的资源字典在 App.xaml 中合并 -->
     <!--
       WFO0003：WinForms 分析器建议改用 Application.SetHighDpiMode 配置 DPI。
@@ -30,6 +40,14 @@
       PerMonitorV2 声明管理；改用 WinForms 的 DPI API 反而会与 WPF 的 DPI 处理冲突。
     -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <!--
+      IL2026：单文件发布会启用裁剪分析器，它逐个报告 JSON 序列化/反序列化"在裁剪下可能失效"。
+      本项目已显式 PublishTrimmed=false，不存在裁剪，这些警告不会成为真实问题；
+      但分析器只看调用点、不看该开关，于是每次发布都刷 7 条。
+      彻底消除的正解是改用 JsonSerializerContext 源生成（需要为每个 DTO 写上下文），
+      属于独立的重构，这里先明确抑制，避免"发布时一堆警告"把真正的问题淹没。
+    -->
+    <NoWarn>$(NoWarn);IL2026</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -37,6 +55,17 @@
     <PackageReference Include="MahApps.Metro" Version="2.4.11" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      图标同时以两种方式嵌入，各有用途，缺一不可：
+        · Resource         —— 供 XAML 的 pack:// 引用（窗口图标）；
+        · EmbeddedResource —— 供托盘在运行时用 GetManifestResourceStream 取出来。
+      （ApplicationIcon 只负责 exe 在资源管理器里的图标，那是 Win32 资源，托管代码读不到。）
+    -->
+    <Resource Include="Resources\DSQQ.ico" />
+    <EmbeddedResource Include="Resources\DSQQ.ico" />
   </ItemGroup>
 
 </Project>

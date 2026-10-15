@@ -6,6 +6,7 @@
         xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
         mc:Ignorable="d"
         Title="DSQQ —— QQ 桥接面板"
+        Icon="pack://application:,,,/Resources/DSQQ.ico"
         Height="760" Width="1160"
         MinHeight="560" MinWidth="880"
         WindowStartupLocation="CenterScreen"

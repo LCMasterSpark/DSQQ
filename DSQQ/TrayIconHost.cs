@@ -217,8 +217,46 @@ public sealed class TrayIconHost : IDisposable
         }
     }
 
-    // 运行时生成托盘图标：深色圆底 + 亮色中心点。
+    // 托盘图标：优先用与 exe 同一份的 DSQQ.ico（多尺寸，Windows 会按 DPI 自动选合适的一档）。
+    // 拿不到资源时退回运行时绘制，保证托盘不会因为资源缺失而变成空白。
     private static Icon CreateDefaultIcon()
+    {
+        if (TryLoadEmbeddedIcon() is { } embedded)
+        {
+            return embedded;
+        }
+
+        return DrawFallbackIcon();
+    }
+
+    // 从程序集资源里取出 DSQQ.ico。
+    // 资源名形如 "DSQQ.Resources.DSQQ.ico"（ApplicationIcon 会以 RootNamespace + 相对路径注册），
+    // 这里按后缀匹配而不是写死全名，避免改命名空间或挪目录后静默失效。
+    private static Icon? TryLoadEmbeddedIcon()
+    {
+        try
+        {
+            var assembly = typeof(TrayIconHost).Assembly;
+            var name = Array.Find(
+                assembly.GetManifestResourceNames(),
+                static n => n.EndsWith(".DSQQ.ico", StringComparison.OrdinalIgnoreCase));
+
+            if (name is null)
+            {
+                return null;
+            }
+
+            using var stream = assembly.GetManifestResourceStream(name);
+            return stream is null ? null : new Icon(stream);
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    // 回退图标：深色圆底 + 亮色中心点。
+    private static Icon DrawFallbackIcon()
     {
         const int Size = 32;
 
