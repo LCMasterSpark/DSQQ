@@ -31,9 +31,20 @@ public partial class MainWindow : Window
     private Timer? _pollTimer;
     private bool _refreshing;
 
+    // 无参构造函数。
+    // 必须有它：App.xaml 的 StartupUri 与 VS 设计器都是通过反射创建窗口，
+    // 而反射调用不接受"可选参数"—— MainWindow(AppServices? services = null)
+    // 在编译期允许无参调用，但反射看到的仍是一个带参构造函数，
+    // 于是 XAML 解析报 "未找到匹配的构造函数"。
+    public MainWindow()
+        : this(null)
+    {
+    }
+
     // 初始化主窗口。
-    // 参数 services：应用服务宿主；为 null 时回退到 App.Services （设计器预览等场景下两者都可能为空，此时退化为默认配置，界面仍可打开）。
-    public MainWindow(AppServices? services = null)
+    // 参数 services：应用服务宿主；为 null 时回退到 App.Services（设计器预览等场景下两者都可能为空，
+    // 此时退化为默认配置，界面仍可打开）。
+    public MainWindow(AppServices? services)
     {
         InitializeComponent();
 
