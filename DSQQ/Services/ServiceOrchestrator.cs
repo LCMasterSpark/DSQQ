@@ -102,6 +102,23 @@ public sealed class ServiceOrchestrator(AppConfig config)
                 }
                 else
                 {
+                    // 启动前先确认安装目录存在。
+                    //
+                    // 默认配置里的目录是开发者的本机路径（D:\SnowLuma），别人装到别处时
+                    // 直接启动只会得到一句"目录不存在：D:\SnowLuma" —— 信息没错，但没告诉
+                    // 用户该去哪儿改。这里提前拦下并把「设置」页指出来。
+                    var dir = _config.SnowLuma.InstallDirectory;
+                    if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+                    {
+                        Report(
+                            StartupStage.Completed,
+                            $"找不到 SnowLuma 安装目录：{dir}{Environment.NewLine}"
+                            + "请到「设置」页把「SnowLuma 安装目录」改成它的实际位置（解压后的根目录，"
+                            + "里面应有 node.exe 与 index.mjs），保存后再点一键启动。",
+                            false);
+                        return false;
+                    }
+
                     Report(StartupStage.StartingSnowLuma, "正在启动 SnowLuma…");
 
                     var environment = new Dictionary<string, string>();
@@ -152,6 +169,19 @@ public sealed class ServiceOrchestrator(AppConfig config)
                 }
                 else
                 {
+                    // 同 SnowLuma：先确认桥接目录存在，失败时直接指向「设置」页。
+                    var dir = _config.Bridge.Directory;
+                    if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+                    {
+                        Report(
+                            StartupStage.Completed,
+                            $"找不到 qq-bridge 目录：{dir}{Environment.NewLine}"
+                            + "请到「设置」页把「qq-bridge 目录」改成它的实际位置"
+                            + $"（解压后的根目录，里面应有 {_config.Bridge.EntryRelativePath}），保存后再点一键启动。",
+                            false);
+                        return false;
+                    }
+
                     var nodePath = ResolveNodeExecutable();
                     if (nodePath is null)
                     {

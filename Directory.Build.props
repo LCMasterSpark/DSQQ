@@ -34,7 +34,7 @@
       原先三者都写死，导致 -p:Version=x.y.z 只能改 Version，
       文件属性里显示的仍是旧版本 —— 发布时看着像"版本号没生效"。
     -->
-    <Version>0.3.8</Version>
+    <Version>0.3.9</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
