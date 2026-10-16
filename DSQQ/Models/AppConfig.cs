@@ -42,8 +42,12 @@ public sealed class AppConfig
 // SnowLuma（第三方 QQ 网关）设置。
 public sealed class SnowLumaSettings
 {
-    // 安装目录，例如 D:\SnowLuma。其下的 config\ 与 logs\ 是主要数据源。
-    public string InstallDirectory { get; set; } = @"D:\SnowLuma";
+    // 安装目录（其下的 config\ 与 logs\ 是主要数据源）。
+    //
+    // 默认为空 = "未指定"，由 ServiceLocator 在启动时自动搜索并填入。
+    // 这里刻意不写死开发者本机路径（原先的 D:\SnowLuma）：别人装到别处时
+    // 那个默认值只会误导，而且会让"零配置"变成"先改配置"。
+    public string InstallDirectory { get; set; } = string.Empty;
 
     // 启动脚本文件名（相对安装目录）。
     public string LauncherFileName { get; set; } = "launcher.bat";
@@ -78,8 +82,8 @@ public sealed class OwnerSettings
 // qq-bridge（QQ ↔ DSH 桥接）设置。
 public sealed class BridgeSettings
 {
-    // 桥接项目根目录，例如 D:\qq-bridge。
-    public string Directory { get; set; } = @"D:\qq-bridge";
+    // 桥接项目根目录。默认为空 = 交给自动发现，理由同上。
+    public string Directory { get; set; } = string.Empty;
 
     // 桥接控制台端口，对应桥接 config.json 的 consolePort。
     public int ConsolePort { get; set; } = 3100;

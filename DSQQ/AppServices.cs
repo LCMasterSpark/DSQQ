@@ -81,8 +81,38 @@ public sealed class AppServices
     public static AppConfig LoadOrDefault(out string? error)
     {
         var loaded = AppConfigStore.TryLoad(out error);
-        return loaded ?? AppConfig.CreateDefault();
+        var config = loaded ?? AppConfig.CreateDefault();
+
+        // 自动补齐缺失的组件路径。
+        //
+        // 配置里没有值、或指向的位置已经无效（别人拿到程序、或用户挪了目录）时，
+        // 按「便携布局 → 程序目录 → 常见位置」搜一遍。目的是让别人下载后
+        // 不必先手动填两个路径才能用。
+        //
+        // 只补空缺，不覆盖用户明确指定过的有效路径。
+        var found = ServiceLocator.Discover(
+            AppContext.BaseDirectory,
+            config.SnowLuma.InstallDirectory,
+            config.Bridge.Directory);
+
+        if (found.SnowLuma is not null)
+        {
+            config.SnowLuma.InstallDirectory = found.SnowLuma;
+        }
+
+        if (found.Bridge is not null)
+        {
+            config.Bridge.Directory = found.Bridge;
+        }
+
+        LastDiscovery = found;
+
+        return config;
     }
+
+    // 最近一次自动发现的结果，供界面解释"路径是怎么来的"。
+    // 在 LoadOrDefault 里填充；未执行过发现时为 null。
+    public static ServiceLocator.Result? LastDiscovery { get; private set; }
 
     // 配置文件路径（供界面显示，便于用户手工编辑）。
     public static string ConfigFilePath => AppConfigStore.DefaultPath;

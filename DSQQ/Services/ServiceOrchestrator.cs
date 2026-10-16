@@ -202,6 +202,17 @@ public sealed class ServiceOrchestrator(AppConfig config)
                         ["DSH_HOME"] = _config.Dsh.HomeDirectory,
                     };
 
+                    // SNOWLUMA_HOME：告诉桥接去哪找 SnowLuma（它的 token 自发现要用这个）。
+                    //
+                    // 便携包里 SnowLuma 就在 services/snowluma 下，路径随用户解压到哪而变。
+                    // 用环境变量注入，桥接的 config.json 里就不必写死绝对路径 ——
+                    // 否则把包挪个位置，token 就找不到了（表现为"换账号后工具全 401"）。
+                    // 桥接侧 snowLumaHomeCandidates() 会把这个值排在候选首位。
+                    if (!string.IsNullOrWhiteSpace(_config.SnowLuma.InstallDirectory))
+                    {
+                        environment["SNOWLUMA_HOME"] = _config.SnowLuma.InstallDirectory;
+                    }
+
                     var launched = ProcessLauncher.StartScript(
                         nodePath,
                         _config.Bridge.EntryRelativePath,
@@ -346,8 +357,14 @@ public sealed class ServiceOrchestrator(AppConfig config)
 
     // 解析桥接要使用的 node.exe 路径。
     // 返回：可执行文件路径；未找到时为 null。
-    // 优先级：配置指定 → DSH 运行时自带（实测为 24.x，满足桥接要求的 ≥ 22.13）→ PATH。
-    // 复用 DSH 运行时可以避免在 C 盘之外再装一份 Node。
+    //
+    // 优先级：配置指定 → **SnowLuma 自带** → DSH 运行时自带 → PATH。
+    //
+    // 为什么 SnowLuma 的 node 排在 DSH 前面：
+    // 便携包把 SnowLuma 打进去了，它根目录就带一份 node.exe（实测 v22.13.0，
+    // 刚好满足桥接要求的 >= 22.13）。优先复用它，便携版就自成一体 ——
+    // 不必依赖用户是否装了 DSH、也不必依赖 DSH 的运行时布局（那是另一个项目的事，
+    // 它一变我们的路径就失效）。
     private string? ResolveNodeExecutable()
     {
         if (!string.IsNullOrWhiteSpace(_config.Bridge.NodeExecutablePath)
@@ -356,18 +373,59 @@ public sealed class ServiceOrchestrator(AppConfig config)
             return _config.Bridge.NodeExecutablePath;
         }
 
-        var candidates = new[]
+        var candidates = new List<string>();
+
+        // SnowLuma 根目录下的 node.exe（便携包内就有）。
+        if (!string.IsNullOrWhiteSpace(_config.SnowLuma.InstallDirectory))
         {
-            Path.Combine(
-                _config.Dsh.HomeDirectory,
-                "dsh-runtimes", "dsh-primary-runtime", "dependencies", "node", "bin", "node.exe"),
-        };
+            candidates.Add(Path.Combine(_config.SnowLuma.InstallDirectory, "node.exe"));
+        }
+
+        // DSH 运行时自带的 node（用户自备 DSH 时的常见位置）。
+        candidates.Add(Path.Combine(
+            _config.Dsh.HomeDirectory,
+            "dsh-runtimes", "dsh-primary-runtime", "dependencies", "node", "bin", "node.exe"));
+
+        // 最后兜底：PATH 上的 node。
+        var fromPath = FindOnPath("node.exe");
+        if (fromPath is not null)
+        {
+            candidates.Add(fromPath);
+        }
 
         foreach (var candidate in candidates)
         {
             if (File.Exists(candidate))
             {
                 return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    // 在 PATH 里找可执行文件；找不到返回 null。
+    private static string? FindOnPath(string fileName)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var full = Path.Combine(dir.Trim(), fileName);
+                if (File.Exists(full))
+                {
+                    return full;
+                }
+            }
+            catch (ArgumentException)
+            {
+                // PATH 里可能有非法路径片段；跳过。
             }
         }
 
