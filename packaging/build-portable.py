@@ -373,7 +373,18 @@ def publish_dsqq(target: Path, reuse_from: Path | None = None) -> None:
     """
     if reuse_from is not None and (reuse_from / "DSQQ.exe").is_file():
         print(f"  [1/4] 复用已发布的 DSQQ：{reuse_from}")
-        for item in reuse_from.iterdir():
+
+        # ⚠️ 必须先建目标目录。另一条路径靠 `dotnet publish --output` 顺手创建它，
+        # 这条不会 —— 少了这一行，CI 上表现为
+        #     FileNotFoundError: [WinError 3] The system cannot find the path specified
+        # 指向 shutil.copy2，看不出是"目录不存在"。本机从不用 --dsqq-from，
+        # 所以这个坑只在 CI 暴露。
+        target.mkdir(parents=True, exist_ok=True)
+
+        # 用绝对路径遍历：reuse_from 可能是相对路径，而复制目标在别处，
+        # 相对路径在两侧混用容易出现"基于哪个 cwd 解析"的歧义。
+        reuse_root = reuse_from.resolve()
+        for item in reuse_root.iterdir():
             destination = target / item.name
             if item.is_dir():
                 shutil.copytree(item, destination, dirs_exist_ok=True)
