@@ -194,7 +194,7 @@ def resolve_snowluma(version: str, prefer_local: bool) -> Path:
     return extracted
 
 
-def find_node_and_pnpm(snowluma_dir: Path) -> tuple[Path, Path]:
+def find_node_and_pnpm(snowluma_dir: Path) -> tuple[Path, Path, Path | None]:
     """
     找打包时用的 node 与 pnpm。
 
@@ -238,53 +238,96 @@ def find_node_and_pnpm(snowluma_dir: Path) -> tuple[Path, Path]:
         sys.exit("找不到 pnpm（试过 PATH 与 DSH 运行时）。"
                  "打包时需要它安装桥接依赖；CI 上请先 actions/setup-node + pnpm/action-setup。")
 
-    return node, pnpm
+    # npm 作为兜底安装器：它随 setup-node 的 Node 一起装，CI 上一定有。
+    # SnowLuma 自带的 node.exe 里**没有** npm，所以这里可能拿不到 —— 那也没关系，
+    # 只要能走 pnpm 就行。
+    npm = None
+    for name in ("npm.cmd", "npm.exe", "npm"):
+        found = shutil.which(name)
+        if found:
+            npm = Path(found)
+            break
+
+    return node, pnpm, npm
 
 
-def run_pnpm(node: Path, pnpm: Path, args: list[str], cwd: Path,
-             env: dict[str, str]) -> subprocess.CompletedProcess:
+def install_bridge_deps(bridge_dst: Path, node: Path, pnpm: Path, npm: Path | None) -> str:
     """
-    以正确的方式调用 pnpm。
-
-    ⚠️ 这里必须按后缀分派 —— 曾经在 CI 上真实踩过：
-        本机找到的是 pnpm.cjs（JS 脚本）→ 得用 `node pnpm.cjs …`
-        CI 找到的是 pnpm.cmd（批处理包装）→ 得直接 `pnpm.cmd …`
-    把 .cmd 交给 node.exe 当脚本执行必然失败（node 会把它当 JS 解析），
-    而本机能跑通、CI 上才炸，最容易被误判成环境问题。
-    """
-    if pnpm.suffix.lower() in (".cjs", ".js", ".mjs"):
-        cmd = [str(node), str(pnpm), *args]
-    else:
-        cmd = [str(pnpm), *args]
-
-    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True,
-                          text=True, encoding="utf-8", errors="replace")
-
-
-def install_bridge_deps(bridge_dst: Path, node: Path, pnpm: Path) -> None:
-    """
-    在打包目录里安装 qq-bridge 的依赖。
+    在打包目录里安装 qq-bridge 的依赖，返回实际用的工具名。
 
     为什么不直接复制仓库里那份 node_modules：
     项目用的是 pnpm，node_modules 里几百个条目是符号链接、其余大量是硬链接
     （真实文件都在 .pnpm 下）。直接复制会把每个链接解引用成实体副本，
-    实测 26 MB 膨胀到 210 MB。改用 hoisted 模式重新安装，得到的是
-    npm 风格的扁平结构 —— 无链接、体积正常、用户解压不需要任何特权。
+    实测 26 MB 膨胀到 210 MB。重新安装能得到 npm 风格的扁平结构 ——
+    无链接、体积正常、用户解压不需要任何特权。
+
+    ⚠️ **多种调用方式依次尝试**。CI 上这一步失败过两次，而本机怎么试都是好的，
+    说明差异在"pnpm 长什么样"而不是逻辑：它可能是 .cjs（JS 脚本）、.cmd（批处理）、
+    .exe（独立二进制），甚至是**没有扩展名的 shell 脚本**（pnpm/action-setup
+    在非 Windows 上装的就是这种）。与其猜是哪一种，不如全试一遍，谁能跑通用谁；
+    最后再兜底到 npm（Node 自带，只要有 setup-node 就一定有）。
     """
     env = os.environ.copy()
     # 让 pnpm 自己能找到 node（它内部会 spawn node），也顺带修好 postinstall。
     env["PATH"] = str(node.parent) + os.pathsep + env.get("PATH", "")
 
-    # --ignore-scripts：postinstall 里写的是裸 `node`，依赖 PATH 上有 node。
-    # 打包机通常没有全局 node，所以先跳过，下面用绝对路径自己跑。
-    print("        安装依赖（hoisted 扁平结构）…")
-    result = run_pnpm(node, pnpm,
-                      ["install", "--config.node-linker=hoisted", "--prod", "--ignore-scripts"],
-                      bridge_dst, env)
-    if result.returncode != 0:
-        print(result.stdout[-2000:])
-        print(result.stderr[-2000:])
-        sys.exit("依赖安装失败")
+    pnpm_args = ["install", "--config.node-linker=hoisted", "--prod", "--ignore-scripts"]
+
+    # 候选调用方式：JS 脚本交给 node；其余直接执行，再退一步交给 cmd.exe。
+    strategies: list[tuple[str, list[str]]] = []
+
+    if pnpm.suffix.lower() in (".cjs", ".js", ".mjs"):
+        strategies.append((f"node {pnpm.name}", [str(node), str(pnpm)]))
+    else:
+        strategies.append((pnpm.name, [str(pnpm)]))
+        # 无扩展名的脚本或 .ps1 之类，CreateProcess 直接执行会失败，交给 cmd 解析。
+        strategies.append((f"cmd /c {pnpm.name}", ["cmd.exe", "/c", str(pnpm)]))
+
+    # 再挂上 PATH 上的其它形态（同一个 pnpm 可能有多种包装）。
+    for name in ("pnpm.cmd", "pnpm.exe", "pnpm"):
+        found = shutil.which(name)
+        if found and Path(found) != pnpm:
+            strategies.append((name, [found]))
+
+    # 最后兜底：npm。它随 setup-node 的 Node 一起装，一定有；
+    # --omit=dev 等价于 pnpm 的 --prod。仓库里有 package-lock.json，解析是确定的。
+    if npm is not None:
+        strategies.append((f"{npm.name}（兜底）",
+                           [str(npm), "install", "--omit=dev", "--ignore-scripts"]))
+
+    errors: list[str] = []
+
+    for label, base in strategies:
+        args = base if label.endswith("（兜底）") else base + pnpm_args
+        print(f"        尝试用 {label} 安装依赖 …")
+
+        try:
+            result = subprocess.run(args, cwd=bridge_dst, env=env, capture_output=True,
+                                    text=True, encoding="utf-8", errors="replace", timeout=900)
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.append(f"{label}: {type(exc).__name__}: {exc}")
+            print(f"          ✗ {type(exc).__name__}: {exc}")
+            continue
+
+        if result.returncode == 0:
+            print(f"          ✓ 成功（{label}）")
+            break
+
+        tail = (result.stderr or result.stdout or "").strip()[-400:]
+        errors.append(f"{label}: exit {result.returncode} — {tail}")
+        print(f"          ✗ exit {result.returncode}")
+        for line in tail.splitlines()[-6:]:
+            print(f"            {line}")
+    else:
+        print()
+        print("!! 所有安装方式都失败了，逐条如下 !!")
+        for item in errors:
+            print(f"   {item}")
+        sys.exit("依赖安装失败（已尝试 pnpm 的多种形态与 npm 兜底）")
+
+    # 校验依赖真的落地了：只靠退出码不够 —— 工具可能"成功"但什么都没装。
+    if not (bridge_dst / "node_modules").is_dir():
+        sys.exit("安装命令返回成功，但 node_modules 不存在")
 
     # 手动跑补丁：修复 @snowluma/* 包 dist 里缺失的 .js 扩展名。
     # 这一步**不能省** —— 纯 Node ESM 解析不了那些相对导入，跳过后桥接起不来。
@@ -299,6 +342,8 @@ def install_bridge_deps(bridge_dst: Path, node: Path, pnpm: Path) -> None:
     if result.returncode != 0:
         print(result.stderr[-1500:])
         sys.exit("补丁脚本执行失败")
+
+    return strategies[len(errors)][0] if errors else strategies[0][0]
 
 
 def publish_dsqq(target: Path, reuse_from: Path | None = None) -> None:
@@ -487,11 +532,12 @@ def main() -> None:
 
     # 3) qq-bridge：复制仓库源码，依赖现场安装
     print("  [3/4] 复制 qq-bridge 源码 …")
-    node, pnpm = find_node_and_pnpm(sl_dst)
+    node, pnpm, npm = find_node_and_pnpm(sl_dst)
     br_dst = target / "services" / "qq-bridge"
     br_count, br_bytes = copy_tree(BRIDGE_SRC, br_dst, BRIDGE_EXCLUDE_DIRS, BRIDGE_EXCLUDE_FILES)
     print(f"        {br_count} 个文件，{br_bytes / 1048576:.1f} MB")
-    install_bridge_deps(br_dst, node, pnpm)
+    used = install_bridge_deps(br_dst, node, pnpm, npm)
+    print(f"        依赖安装工具：{used}")
 
     write_launcher(target)
     write_readme(target, version)
