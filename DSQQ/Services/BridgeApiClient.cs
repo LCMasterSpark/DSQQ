@@ -295,8 +295,12 @@ public sealed class BridgeApiClient : IDisposable
     }
 
     // 启用或清除当前角色（传空字符串表示清除）。
+    //
+    // ⚠️ 桥接的 /api/role 读的是 body.role，不是 body.name。
+    // 传 name 时它会落进 else 分支执行"清除角色"，却仍返回 {"ok":true} ——
+    // 表现为"点了启用、界面提示已启用，但角色其实被清掉了"，属于静默失效。
     public Task<bool> SetCurrentRoleAsync(string name, CancellationToken cancellationToken = default)
-        => PostAsync("/api/role", new { name }, cancellationToken);
+        => PostAsync("/api/role", new { role = name }, cancellationToken);
 
     // 读取仿真提示词（预设内置的那一层）。
     public Task<SimPromptResponse?> GetSimPromptAsync(string preset, CancellationToken cancellationToken = default)    {
