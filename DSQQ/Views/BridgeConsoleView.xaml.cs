@@ -1544,6 +1544,17 @@ public partial class BridgeConsoleView : UserControl
     // 没人看的时候不该产生流量。所以第一次切过去时才加载。
     private bool _stickersLoaded;
 
+    // 只在切页那一瞬间为真，见 OnConsoleRequestBringIntoView。
+    private bool _suppressBringIntoView;
+
+    private void OnConsoleRequestBringIntoView(object sender, System.Windows.RequestBringIntoViewEventArgs e)
+    {
+        if (_suppressBringIntoView)
+        {
+            e.Handled = true;
+        }
+    }
+
     private async void OnConsoleTabChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         // 子控件（列表、下拉框）的选中变化也会冒泡到这里，只认 TabControl 自己的。
@@ -1551,6 +1562,15 @@ public partial class BridgeConsoleView : UserControl
         {
             return;
         }
+
+        // 切页时 WPF 会把焦点移进新页里第一个可聚焦的控件，控件一 RequestBringIntoView，
+        // 整页级的滚动容器就跟着滚过去 —— 实测「她是谁」每次切过去都停在离顶 10% 的位置
+        // （顶上那两段说明被吃掉），看上去像内容缺了一块。这里只压切页这一下：
+        // 用户自己用 Tab 键在表单里逐格跳时，还得靠它把当前控件滚进视野。
+        _suppressBringIntoView = true;
+        _ = Dispatcher.BeginInvoke(
+            new Action(() => _suppressBringIntoView = false),
+            System.Windows.Threading.DispatcherPriority.ContextIdle);
 
         if (ConsoleTabs.SelectedItem is System.Windows.Controls.TabItem { Header: "表情库" } && !_stickersLoaded)
         {
