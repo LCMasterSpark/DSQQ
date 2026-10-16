@@ -226,6 +226,7 @@ public partial class BridgeConsoleView : UserControl
             return;
         }
 
+        ApplyPersonaLabels(response);
         PersonaEnabledCheck.IsChecked = response.Persona.Enabled;
         PersonaNameBox.Text = response.Persona.Name;
         PersonaToneBox.Text = response.Persona.Tone;
@@ -260,6 +261,29 @@ public partial class BridgeConsoleView : UserControl
 
         // 留档：保存时用来比对，防止整体提交把未显示的字段清空。
         _quotaBaseline = quota;
+    }
+
+    // 人设字段标签由桥接下发的 fields[].label 决定 —— 界面上不能写死。
+    // 桥接改了文案（措辞、顺序）而界面不改，用户看到的说明就会与实践脱节。
+    private void ApplyPersonaLabels(PersonaResponse response)
+    {
+        // key → 界面上对应的标签控件
+        var labels = new Dictionary<string, TextBlock>(StringComparer.Ordinal)
+        {
+            ["name"] = PersonaNameLabel,
+            ["tone"] = PersonaToneLabel,
+            ["style"] = PersonaStyleLabel,
+            ["forbid"] = PersonaForbidLabel,
+            ["extra"] = PersonaExtraLabel,
+        };
+
+        foreach (var field in response.Fields)
+        {
+            if (labels.TryGetValue(field.Key, out var block) && !string.IsNullOrWhiteSpace(field.Label))
+            {
+                block.Text = field.Label;
+            }
+        }
     }
 
     // 载入 token 汇总与最近活动。
@@ -618,14 +642,30 @@ public partial class BridgeConsoleView : UserControl
         }
 
         var ok = await _client.SetCurrentRoleAsync(summary.Name);
-        RoleStatusText.Text = ok ? $"已启用「{summary.Name}」（下一条消息生效）" : "启用失败。";
+        if (!ok)
+        {
+            RoleStatusText.Text = "启用失败。";
+            return;
+        }
+
+        // 必须重新载入：列表里会标出"当前启用"，不刷新的话它会一直显示旧状态，
+        // 用户看到的是"点了启用但列表没变化"。
+        await LoadRolesAsync();
+        RoleStatusText.Text = $"已启用「{summary.Name}」（下一条消息生效）";
     }
 
     // 清除当前角色。
     private async void OnRoleClearClick(object sender, RoutedEventArgs e)
     {
         var ok = await _client.SetCurrentRoleAsync(string.Empty);
-        RoleStatusText.Text = ok ? "已清除角色（恢复为纯仿真提示词）。" : "清除失败。";
+        if (!ok)
+        {
+            RoleStatusText.Text = "清除失败。";
+            return;
+        }
+
+        await LoadRolesAsync();   // 同上：让列表的"当前启用"标记同步
+        RoleStatusText.Text = "已清除角色（恢复为纯仿真提示词）。";
     }
 
     // 新建角色：清空编辑区，用户填名字与正文后点「保存正文」。
@@ -817,7 +857,10 @@ public partial class BridgeConsoleView : UserControl
     // 可选预设（与桥接的 preset 名一致）。
     private static readonly string[] Presets = ["qq-chat", "qq-chat-v2"];
 
-    private async void OnPresetLoadClick(object sender, RoutedEventArgs e)
+    private async void OnPresetLoadClick(object sender, RoutedEventArgs e) => await LoadPresetAsync();
+
+    // 从桥接读回提示词正文。载入与保存后都走它，保证界面显示的就是桥接实际持有的内容。
+    private async Task LoadPresetAsync()
     {
         var preset = PresetCombo.SelectedItem?.ToString() ?? Presets[^1];
         var response = await _client.GetSimPromptAsync(preset);
@@ -843,9 +886,16 @@ public partial class BridgeConsoleView : UserControl
         var ok = await _client.SaveSimPromptAsync(preset, PresetContentBox.Text);
 
         // 桥接会做不变量校验，被拒时通常是删掉了权限边界表述或正文过短。
-        PresetStatusText.Text = ok
-            ? $"已保存 {preset}；需重启 DSH 生效。"
-            : "保存被拒绝：可能缺少安全不变量（权限边界、令牌、角色注入等）或正文过短。";
+        if (!ok)
+        {
+            PresetStatusText.Text = "保存被拒绝：可能缺少安全不变量（权限边界、令牌、角色注入等）或正文过短。";
+            return;
+        }
+
+        // 保存成功后回读一次：桥接可能对正文做了规范化，直接把输入框里的内容当成
+        // "已保存的内容"会让界面与桥接不一致 —— 用户下次看到的就是自己以为的版本。
+        await LoadPresetAsync();
+        PresetStatusText.Text = $"已保存 {preset}；需重启 DSH 生效。";
     }
     // ── 上下文重置 ──
 
