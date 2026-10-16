@@ -211,4 +211,103 @@ public sealed class BridgeApiClientTests
         Assert.NotNull(server.LastRequestBody);
         Assert.Contains("crossGroup", server.LastRequestBody, StringComparison.Ordinal);
     }
+
+    // ── 唤醒配置写回 ────────────────────────────────────────────────────────
+    //
+    // POST /api/socialV2/wake-config 的正文是 { key, config } —— config 再嵌一层，
+    // 不是平铺。桥接读的是 body.key 与 body.config，写错了会得到「key 不能为空」，
+    // 一句和真正原因毫无关系的话。
+
+    [Fact]
+    public async Task 唤醒配置的正文应把_config_嵌在_key_旁边()
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        await client.SetSocialV2WakeConfigAsync("group:123", new { mode = "diving" });
+
+        using var body = JsonDocument.Parse(server.LastRequestBody!);
+        Assert.Equal("group:123", body.RootElement.GetProperty("key").GetString());
+        Assert.Equal("diving", body.RootElement.GetProperty("config").GetProperty("mode").GetString());
+    }
+
+    // 桥接拒绝时返回 HTTP 400 + {ok:false, error}，而那个 error 是**写给人看的**：
+    // 它常常直接说明了要改哪里。换成"保存失败"用户只能去猜。
+    [Fact]
+    public async Task 桥接拒绝唤醒配置时应转达它的原话()
+    {
+        using var server = new StubHttpServer
+        {
+            ResponseBody =
+                """{"ok":false,"error":"无限期潜水必须至少保留一个唤醒条件（@/名字/拍一拍/关键词/提问/anyMessage/概率>0），否则 AI 可能永眠"}""",
+        };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        var result = await client.SetSocialV2WakeConfigAsync("group:123", new { mode = "diving" });
+
+        // 注意：HTTP 400 也要能把响应体读出来 —— 只按状态码判断就看不到这句话。
+        Assert.NotNull(result);
+        Assert.False(result!.Ok);
+        Assert.Contains("无限期潜水", client.LastError);
+    }
+
+    // 被"沉睡前观察窗口"挡住时，桥接会附带还差多少毫秒。界面要能把这段换算成分钟显示。
+    [Fact]
+    public async Task 被观察窗口挡住时应带回剩余毫秒()
+    {
+        using var server = new StubHttpServer
+        {
+            ResponseBody = """{"ok":false,"error":"还不能立刻设置潜水","preSleepWaitRemainingMs":180000}""",
+        };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        var result = await client.SetSocialV2WakeConfigAsync("group:123", new { mode = "diving" });
+
+        Assert.Equal(180000, result!.PreSleepWaitRemainingMs);
+    }
+
+    // 成功时桥接回传改写后的配置。服务端会动字段（活跃模式强制打开任意消息、
+    // 关键词截断、概率夹取），所以界面上要显示的是**回传的这份**，不是刚才提交的。
+    [Fact]
+    public async Task 保存成功应带回桥接改写后的配置()
+    {
+        using var server = new StubHttpServer
+        {
+            ResponseBody = """
+                {"ok":true,"key":"group:123","unreadCount":7,
+                 "wakeConfig":{"mode":"active","infinite":true,"sleepUntil":null,
+                   "triggers":{"atMention":true,"anyMessage":true,"probability":1.5,"keywords":[]},
+                   "batchWindowMs":12000,"wakeCount":3,"noActionCount":0},
+                 "wakeSafety":{"hard":true,"guaranteed":true}}
+                """,
+        };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        var result = await client.SetSocialV2WakeConfigAsync("group:123", new { mode = "active" });
+
+        Assert.True(result!.Ok);
+        Assert.Equal("active", result.WakeConfig!.Mode);
+        Assert.True(result.WakeConfig.Infinite);
+
+        // 桥接把概率夹到了 1.5（不夹的话这里是 0.05 之类的提交值，界面就会显示错的数）。
+        Assert.Equal(1.5, result.WakeConfig.Triggers!.Probability, 3);
+        Assert.True(result.WakeConfig.Triggers.AnyMessage);
+        Assert.True(result.WakeSafety!.Guaranteed);
+        Assert.Equal(7, result.UnreadCount);
+    }
+
+    // 会话 key 是必填的：没有它桥接不知道该改哪个会话，本方法也不该发请求。
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task 会话_key_为空时不应发请求(string key)
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => client.SetSocialV2WakeConfigAsync(key, new { mode = "diving" }));
+
+        Assert.Null(server.LastRequestBody);
+    }
 }

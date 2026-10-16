@@ -710,12 +710,20 @@
             <!-- ══ 仿真提示词 ══ -->
             <!-- ══ 二代仿真 ══ -->
             <TabItem Header="二代仿真">
+                <!-- 这一页从上到下已经有工具条、运行开关、会话列表、明细四栏，
+                     再加上展开后的唤醒编辑器就超过窗口高度了。整页套一层
+                     ScrollViewer，把"装不下"变成"能滚"，而不是让某一栏被压成 0 高
+                     —— 被压成 0 高的部分连滚都滚不到，等于功能消失。
+                     行定义因此全是 Auto：ScrollViewer 给的是无限高度，
+                     留一个星号行没有任何东西可分。 -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Orientation="Horizontal">
@@ -768,7 +776,94 @@
                         </StackPanel>
                     </Border>
 
-                    <Grid Grid.Row="3" Margin="0,12,0,0">
+                    <!-- 唤醒配置编辑器：作用于上面选中的那个会话。
+                         桥接这套规则有几处绕（活跃模式会强制打开「任意消息」、
+                         切回潜水会清掉「任意消息」、无限期潜水必须至少留一个触发条件
+                         否则整条请求被拒），所以把约束写在旁边，而不是等人点了保存
+                         再去看报错。
+
+                         收在 Expander 里、默认折叠：这一页的常驻内容已经有工具条、
+                         运行开关、会话列表、明细四栏，再摆一张常驻表单，
+                         明细四栏就会被挤到窗口外。折叠时标题上仍带着当前目标会话。 -->
+                    <Expander x:Name="WakeEditorExpander" Grid.Row="3" Margin="0,12,0,0"
+                              IsExpanded="False">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="唤醒配置" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="WakeEditTargetText" Margin="8,0,0,0"
+                                           VerticalAlignment="Center" Opacity="0.75"
+                                           Text="（先在上面选中一个会话）" />
+                            </StackPanel>
+                        </Expander.Header>
+                        <Border Margin="0,4,0,0" Padding="10" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}">
+                            <StackPanel>
+                                <WrapPanel>
+                                    <TextBlock Text="模式" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <ComboBox x:Name="WakeModeCombo" Width="86" Height="28"
+                                              VerticalAlignment="Center" />
+                                    <CheckBox x:Name="WakeInfiniteCheck" Content="无限期"
+                                              VerticalAlignment="Center" Margin="18,0,0,0" />
+                                    <TextBlock Text="有限时长" VerticalAlignment="Center" Margin="18,0,6,0" />
+                                    <TextBox x:Name="WakeMinutesBox" Width="56" Height="28"
+                                             VerticalAlignment="Center" />
+                                    <TextBlock Text="分钟" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                    <TextBlock Text="概率" VerticalAlignment="Center" Margin="18,0,6,0" />
+                                    <TextBox x:Name="WakeProbabilityBox" Width="56" Height="28"
+                                             VerticalAlignment="Center" />
+                                    <TextBlock Text="批量窗口" VerticalAlignment="Center" Margin="18,0,6,0" />
+                                    <TextBox x:Name="WakeBatchSecondsBox" Width="56" Height="28"
+                                             VerticalAlignment="Center" />
+                                    <TextBlock Text="秒" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                </WrapPanel>
+
+                                <WrapPanel Margin="0,8,0,0">
+                                    <TextBlock Text="触发" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <CheckBox x:Name="WakeAtMentionCheck" Content="@ 我"
+                                              VerticalAlignment="Center" Margin="0,0,16,0" />
+                                    <CheckBox x:Name="WakeNameMentionCheck" Content="叫名字"
+                                              VerticalAlignment="Center" Margin="0,0,16,0" />
+                                    <CheckBox x:Name="WakeQuestionCheck" Content="被提问"
+                                              VerticalAlignment="Center" Margin="0,0,16,0" />
+                                    <CheckBox x:Name="WakePokeCheck" Content="拍一拍"
+                                              VerticalAlignment="Center" Margin="0,0,16,0" />
+                                    <CheckBox x:Name="WakeAnyMessageCheck" Content="任意消息"
+                                              VerticalAlignment="Center" />
+                                </WrapPanel>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="关键词" VerticalAlignment="Center"
+                                               Margin="0,0,6,0" />
+                                    <TextBox Grid.Column="1" x:Name="WakeKeywordsBox" Height="28"
+                                             VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" x:Name="WakeSpeakerIdsLabel" Text="指定成员"
+                                               VerticalAlignment="Center" Margin="14,0,6,0" />
+                                    <TextBox Grid.Column="3" x:Name="WakeSpeakerIdsBox" Height="28"
+                                             VerticalAlignment="Center" />
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <Button x:Name="SaveWakeConfigButton" Content="保存" Width="80"
+                                            Height="28" Click="OnSaveWakeConfigClick" />
+                                    <Button x:Name="ReloadWakeConfigButton" Content="读回" Width="70"
+                                            Height="28" Margin="8,0,0,0"
+                                            Style="{StaticResource MahApps.Styles.Button.Flat}"
+                                            Click="OnReloadWakeConfigClick" />
+                                </StackPanel>
+
+                                <TextBlock x:Name="WakeEditHintText" Margin="0,8,0,0"
+                                           TextWrapping="Wrap" Opacity="0.75" Text="（未读取）" />
+                            </StackPanel>
+                        </Border>
+                    </Expander>
+
+                    <Grid Grid.Row="4" Margin="0,12,0,0" MinHeight="300">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
@@ -825,6 +920,7 @@
                         </Border>
                     </Grid>
                 </Grid>
+                </ScrollViewer>
             </TabItem>
 
             <TabItem Header="表情库">

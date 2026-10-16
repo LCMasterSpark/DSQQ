@@ -485,6 +485,44 @@ public sealed class BridgeApiClient : IDisposable
     public Task<SocialV2ConfigResponse?> GetSocialV2ConfigAsync(CancellationToken cancellationToken = default)
         => GetAsync<SocialV2ConfigResponse>("/api/socialV2/config", cancellationToken);
 
+    // 写回某个会话的唤醒配置。
+    //
+    // 服务端的规矩比参数表看起来多（`bridge.js` 的 wake-config 处理器，L5406 起）：
+    //   · mode 只认 'active'/'diving'，别的值一律保留原值（不会报错）；
+    //   · mode='active' 会强制 infinite=true、sleepUntil=null、anyMessage=true；
+    //   · 切回 'diving' 时若不显式给出 anyMessage，桥接**会把它清掉** ——
+    //     避免"潜水 = 每条消息都唤醒"的矛盾；
+    //   · 无限期潜水必须至少留一个唤醒条件，否则整条请求被 400 拒绝。
+    //     那是对"她可能永远不再醒来"的保护，不要绕过；
+    //   · 设成"要睡"的配置时，若还没走完沉睡前观察窗口，同样被 400 拒绝。
+    //
+    // 前三条的后果是：**五个触发布尔必须显式提交**，否则界面上看到的和实际生效的
+    // 会不一致。调用方按"所见即所存"构造 config 即可。
+    public async Task<SocialV2WakeConfigResponse?> SetSocialV2WakeConfigAsync(
+        string key,
+        object config,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(config);
+
+        var result = await PostForResultAsync<SocialV2WakeConfigResponse>(
+            "/api/socialV2/wake-config", new { key, config }, cancellationToken).ConfigureAwait(false);
+
+        if (result is null)
+        {
+            // 网络层的问题，LastError 已由 PostForResultAsync 写好。
+            return null;
+        }
+
+        if (!result.Ok)
+        {
+            LastError = string.IsNullOrWhiteSpace(result.Error) ? "桥接拒绝了这次修改。" : result.Error;
+        }
+
+        return result;
+    }
+
     // 保存二代仿真配置。
     //
     // 桥接侧是**浅合并**（`{ ...current, ...body }`）。顶层字段只交要改的那个是安全的，

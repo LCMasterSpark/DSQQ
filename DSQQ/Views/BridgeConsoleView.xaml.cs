@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -77,6 +78,11 @@ public partial class BridgeConsoleView : UserControl
         PresetCombo.ItemsSource = Presets;
         PresetCombo.SelectedIndex = Presets.Length - 1;
         SessionGrid.ItemsSource = _sessions;
+
+        // 索引 0 是潜水、1 是活跃（FillWakeEditor 与保存都按这个顺序取值）。
+        WakeModeCombo.ItemsSource = new[] { "潜水", "活跃" };
+        WakeModeCombo.SelectedIndex = 0;
+        WakeModeCombo.SelectionChanged += OnWakeModeChanged;
 
         Loaded += async (_, _) => await ReloadAsync();
     }
@@ -1250,7 +1256,211 @@ public partial class BridgeConsoleView : UserControl
         SocialV2MemoryText.Text = memory is null
             ? "（读不到记忆）"
             : string.IsNullOrWhiteSpace(memory.Formatted) ? "（她还没有关于这个会话的记忆）" : memory.Formatted;
+
+        // 唤醒编辑器跟着选中项走 —— 否则很容易看着 A 会话的配置去改 B 会话。
+        FillWakeEditor(conversation);
     }
+
+    // 当前唤醒编辑器作用在哪个会话上。null 表示还没选中任何会话。
+    private string? _wakeEditorKey;
+
+    // 把某个会话的唤醒配置填进编辑器。
+    //
+    // 单独抽出来是因为有三条路径要填：切换选中项、点「读回」、保存成功后用桥接
+    // 回传的那份覆盖（服务端会改写一些字段，只有回传的才是真正生效的值）。
+    private void FillWakeEditor(SocialV2Conversation conversation)
+    {
+        var config = conversation.WakeConfig;
+        var key = conversation.Key;
+
+        _wakeEditorKey = key;
+        WakeEditTargetText.Text = string.IsNullOrWhiteSpace(key) ? "（先在上面选中一个会话）" : key;
+
+        if (config is null)
+        {
+            WakeEditHintText.Text = "这个会话没有可读的唤醒配置。";
+            return;
+        }
+
+        WakeModeCombo.SelectedIndex = config.Mode == "active" ? 1 : 0;
+        WakeInfiniteCheck.IsChecked = config.Infinite;
+
+        var triggers = config.Triggers;
+        WakeAtMentionCheck.IsChecked = triggers?.AtMention ?? false;
+        WakeNameMentionCheck.IsChecked = triggers?.NameMention ?? false;
+        WakeQuestionCheck.IsChecked = triggers?.Question ?? false;
+        WakePokeCheck.IsChecked = triggers?.Poke ?? false;
+        WakeAnyMessageCheck.IsChecked = triggers?.AnyMessage ?? false;
+
+        WakeProbabilityBox.Text = (triggers?.Probability ?? 0).ToString("0.###", CultureInfo.InvariantCulture);
+        WakeKeywordsBox.Text = string.Join(", ", triggers?.Keywords ?? []);
+        WakeSpeakerIdsBox.Text = string.Join(", ", triggers?.SpeakerIds ?? []);
+        WakeBatchSecondsBox.Text = (config.BatchWindowMs / 1000.0).ToString("0.###", CultureInfo.InvariantCulture);
+
+        // 有限时长没法从 sleepUntil 直接反推（那是绝对时间），保持用户上次输入的值。
+        if (string.IsNullOrWhiteSpace(WakeMinutesBox.Text))
+        {
+            WakeMinutesBox.Text = "30";
+        }
+
+        // 私聊里「指定成员」会被桥接清空 —— 与其让人填完发现没保存，不如直接停用。
+        var isPrivate = key?.StartsWith("private:", StringComparison.Ordinal) == true;
+        WakeSpeakerIdsBox.IsEnabled = !isPrivate;
+        WakeSpeakerIdsLabel.Opacity = isPrivate ? 0.5 : 1.0;
+
+        ApplyWakeModeConstraints();
+
+        WakeEditHintText.Text = isPrivate
+            ? "私聊没有「指定成员发言」这回事（桥接会清空它），其余项照常。"
+            : "改完点「保存」。关键词按逗号分隔。";
+    }
+
+    // 活跃模式的连带效果。
+    //
+    // 桥接在 mode='active' 时会强制 infinite=true、sleepUntil=null、anyMessage=true
+    // （`bridge.js:5453-5457`）。与其让人填一个不会被采纳的值、保存后再困惑于
+    // 回读结果和刚才填的不一样，不如当场把这两个开关按服务端的结果摆好并停用。
+    private void ApplyWakeModeConstraints()
+    {
+        var isActive = WakeModeCombo.SelectedIndex == 1;
+
+        if (isActive)
+        {
+            WakeInfiniteCheck.IsChecked = true;
+            WakeAnyMessageCheck.IsChecked = true;
+        }
+
+        WakeInfiniteCheck.IsEnabled = !isActive;
+        WakeAnyMessageCheck.IsEnabled = !isActive;
+        WakeMinutesBox.IsEnabled = WakeInfiniteCheck.IsChecked != true;
+    }
+
+    // 切模式时把连带效果摆出来（不切模式就不动用户填的东西）。
+    private void OnWakeModeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        ApplyWakeModeConstraints();
+    }
+
+    private async void OnReloadWakeConfigClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_wakeEditorKey))
+        {
+            WakeEditHintText.Text = "先在上面选中一个会话。";
+            return;
+        }
+
+        await LoadWakeEditorAsync(_wakeEditorKey);
+    }
+
+    // 从桥接重新读某个会话的状态，再用它填编辑器。
+    private async Task LoadWakeEditorAsync(string key)
+    {
+        var state = await _client.GetSocialV2StateAsync(key);
+
+        if (state?.WakeConfig is null)
+        {
+            WakeEditHintText.Text = string.IsNullOrEmpty(_client.LastError)
+                ? "读不到这个会话的唤醒配置。"
+                : $"读不到唤醒配置：{_client.LastError}";
+            return;
+        }
+
+        FillWakeEditor(new SocialV2Conversation
+        {
+            Key = key,
+            WakeConfig = state.WakeConfig,
+            WakeSafety = state.WakeSafety,
+        });
+    }
+
+    private async void OnSaveWakeConfigClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_wakeEditorKey))
+        {
+            WakeEditHintText.Text = "先在上面选中一个会话。";
+            return;
+        }
+
+        var key = _wakeEditorKey;
+        var infinite = WakeInfiniteCheck.IsChecked == true;
+
+        // 服务端会把 batchWindowMs 卡在 [1000, 3600000] 毫秒，sleepMs 卡在
+        // [sleepMinMs=60000, sleepMaxMs=0（不限）]。这里先按同样的范围夹一次，
+        // 免得存下去的值和界面上写的不是一回事。
+        var batchSeconds = Math.Clamp(ToDouble(WakeBatchSecondsBox.Text, 12), 1, 3600);
+        var minutes = Math.Max(1, ToDouble(WakeMinutesBox.Text, 30));
+
+        var config = new Dictionary<string, object?>
+        {
+            ["mode"] = WakeModeCombo.SelectedIndex == 1 ? "active" : "diving",
+            ["infinite"] = infinite,
+
+            // 五个触发布尔全部显式提交：桥接在切回潜水时会清掉没提交的 anyMessage，
+            // 提交一半会让"界面显示的"和"实际生效的"分叉。
+            ["triggers"] = new Dictionary<string, object?>
+            {
+                ["atMention"] = WakeAtMentionCheck.IsChecked == true,
+                ["nameMention"] = WakeNameMentionCheck.IsChecked == true,
+                ["question"] = WakeQuestionCheck.IsChecked == true,
+                ["poke"] = WakePokeCheck.IsChecked == true,
+                ["anyMessage"] = WakeAnyMessageCheck.IsChecked == true,
+                ["keywords"] = WakeListParser.ParseKeywords(WakeKeywordsBox.Text),
+                ["speakerIds"] = WakeListParser.ParseSpeakerIds(WakeSpeakerIdsBox.Text),
+                ["probability"] = Math.Clamp(ToDouble(WakeProbabilityBox.Text, 0), 0, 1),
+            },
+            ["batchWindowMs"] = (long)Math.Round(batchSeconds * 1000),
+        };
+
+        if (!infinite)
+        {
+            config["sleepMs"] = (long)Math.Round(minutes * 60_000);
+        }
+
+        SaveWakeConfigButton.IsEnabled = false;
+        try
+        {
+            var result = await _client.SetSocialV2WakeConfigAsync(key, config);
+
+            if (result is null || !result.Ok)
+            {
+                // 桥接的 error 原文比"保存失败"有用得多 —— 它常常直接说明了原因
+                // （无限期潜水没有触发条件、还没走完沉睡前观察窗口……）。
+                var reason = string.IsNullOrWhiteSpace(_client.LastError) ? "保存失败。" : _client.LastError;
+
+                if (result?.PreSleepWaitRemainingMs is > 0)
+                {
+                    var remain = TimeSpan.FromMilliseconds(result.PreSleepWaitRemainingMs.Value);
+                    reason += $"　还需约 {remain.TotalMinutes:0.#} 分钟。";
+                }
+
+                WakeEditHintText.Text = reason;
+                return;
+            }
+        }
+        finally
+        {
+            SaveWakeConfigButton.IsEnabled = true;
+        }
+
+        // 用桥接回传的那份覆盖编辑器：服务端会改写字段（活跃模式强制打开任意消息、
+        // 关键词截断到 50 条、概率夹到 0~1……），只有回传的才是真正生效的值。
+        await LoadWakeEditorAsync(key);
+
+        // 会话列表与右侧明细也跟着更新，免得两处显示不一致。
+        // 必须放在上面之后 —— LoadSocialV2Async 会重选会话并重填编辑器。
+        await LoadSocialV2Async();
+
+        // 提示放在最后写：上面两步都会把 WakeEditHintText 覆盖掉。
+        WakeEditHintText.Text += "　（已保存并回读）";
+    }
+
+    private static double ToDouble(string? text, double fallback)
+        => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : fallback;
 
     // 反馈是 AI 主动上报的问题。它和工具日志放在一起，因为两者都是"运行时留痕"。
     private async Task LoadFeedbackAsync()

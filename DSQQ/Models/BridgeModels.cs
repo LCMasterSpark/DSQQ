@@ -1131,6 +1131,33 @@ public sealed class SocialV2WakeSafety
     }
 }
 
+// POST /api/socialV2/wake-config 的响应。
+//
+// 被拒绝时是 HTTP 400 + `{ok:false, error}` —— 那个 error 是桥接写给人的
+//（例如「无限期潜水必须至少保留一个唤醒条件…」），比一句"保存失败"有用得多，
+// 要原样转达。成功时连带回新的 wakeConfig 与 wakeSafety，可以省一次回读。
+public sealed class SocialV2WakeConfigResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("wakeConfig")]
+    public SocialV2WakeConfig? WakeConfig { get; set; }
+
+    [JsonPropertyName("wakeSafety")]
+    public SocialV2WakeSafety? WakeSafety { get; set; }
+
+    // 被"沉睡前观察窗口"挡住时，桥接会给出还差多少毫秒。
+    [JsonPropertyName("preSleepWaitRemainingMs")]
+    public double? PreSleepWaitRemainingMs { get; set; }
+
+    [JsonPropertyName("unreadCount")]
+    public int? UnreadCount { get; set; }
+}
+
 // GET /api/socialV2/memory
 public sealed class SocialV2MemoryResponse
 {
