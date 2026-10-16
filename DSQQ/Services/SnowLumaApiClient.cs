@@ -165,6 +165,78 @@ public sealed class SnowLumaApiClient : IDisposable
     public Task<SnowLumaOneBotConfig?> GetOneBotConfigAsync(string uin, CancellationToken cancellationToken = default)
         => GetAsync<SnowLumaOneBotConfig>($"/api/config/{uin}", cancellationToken);
 
+    // 保存指定账号的 OneBot 配置。
+    //
+    // ⚠️ 这是**整体覆盖**语义：调用方必须先把现有配置读出来、改完再整体提交，
+    // 否则没提交的字段会被清掉。模型里对未知字段用了 JsonExtensionData 兜底。
+    public async Task<bool> SaveOneBotConfigAsync(
+        string uin,
+        SnowLumaOneBotConfig config,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uin);
+        ArgumentNullException.ThrowIfNull(config);
+
+        try
+        {
+            using var response = await _http
+                .PostAsync(
+                    $"/api/config/{uin}",
+                    new StringContent(
+                        JsonSerializer.Serialize(config, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    // 读取可用的 QQ 账号（登录成功后才有）。
+    public async Task<IReadOnlyList<SnowLumaAccount>> GetQqListAsync(CancellationToken cancellationToken = default)
+    {
+        var list = await GetAsync<SnowLumaQqList>("/api/qq-list", cancellationToken).ConfigureAwait(false);
+        return list?.List ?? [];
+    }
+
+    // 读取各账号的接入点状态（哪个端口在听、有几个客户端连上来）。
+    public async Task<IReadOnlyList<SnowLumaConnection>> GetConnectionsAsync(CancellationToken cancellationToken = default)
+    {
+        var list = await GetAsync<SnowLumaConnections>("/api/connections", cancellationToken).ConfigureAwait(false);
+        return list?.List ?? [];
+    }
+
+    // 把某个 QQ 进程加载（注入原生模块）进来。
+    public Task<bool> LoadProcessAsync(int pid, CancellationToken cancellationToken = default)
+        => PostActionAsync($"/api/processes/{pid}/load", cancellationToken);
+
+    // 把某个 QQ 进程卸载出去。
+    public Task<bool> UnloadProcessAsync(int pid, CancellationToken cancellationToken = default)
+        => PostActionAsync($"/api/processes/{pid}/unload", cancellationToken);
+
+    // 重新探测某个 QQ 进程的状态。
+    public Task<bool> RefreshProcessAsync(int pid, CancellationToken cancellationToken = default)
+        => PostActionAsync($"/api/processes/{pid}/refresh", cancellationToken);
+
+    // 执行一个无请求体的 POST 动作，只关心是否成功。
+    private async Task<bool> PostActionAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _http.PostAsync(path, null, cancellationToken).ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
     // 导出会话 Cookie，供持久化使用。
     // 返回：形如 name=value; name2=value2 的字符串；无会话时为空串。
     public string ExportCookies()

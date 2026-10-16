@@ -203,14 +203,18 @@ public partial class SnowLumaView : UserControl
                 ? "（无已登录账号）"
                 : string.Join("、", status.Accounts.Select(a => $"{a.Nickname ?? "?"}({a.Uin ?? "?"})"));
 
-            var injected = processes.Count(p => p.Loaded);
+            // 之前这里读的是 p.Loaded，而真实字段叫 injected —— 那个属性恒为 false，
+            // 所以「已注入 N 个」一直显示 0，误导排查方向。
+            var injected = processes.Count(p => p.Injected);
+            var loggedIn = processes.Count(p => p.LoggedIn);
+
             OverviewText.Text =
                 $"地址        : {_services.Endpoints.SnowLumaWebUi}{Environment.NewLine}"
                 + $"版本        : {status.Version ?? "未知"}{Environment.NewLine}"
                 + $"已登录账号  : {accounts}{Environment.NewLine}"
-                + $"QQ 进程     : {processes.Count} 个，其中已注入 {injected} 个{Environment.NewLine}"
+                + $"QQ 进程     : {processes.Count} 个，其中已加载 {injected} 个、已登录 {loggedIn} 个{Environment.NewLine}"
                 + $"{Environment.NewLine}"
-                + "提示：若「已注入 0 个」但 QQ 正在运行，通常是 SnowLuma 的原生组件未能挂上 QQ 进程；"
+                + "提示：若「已加载 0 个」但 QQ 正在运行，通常是 SnowLuma 的原生组件未能挂上 QQ 进程；"
                 + "请查看 SnowLuma 日志中的 [Hook] 行。";
         }
 

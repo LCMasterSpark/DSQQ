@@ -85,6 +85,36 @@ public partial class MainWindow : Window
         _pollTimer = new Timer(_ => TaskObserver.FireAndForget(RefreshAllAsync, "主窗口状态轮询"), null, interval, interval);
 
         SubtitleText.Text = $"每 {interval.TotalSeconds:0.#} 秒自动刷新";
+
+        // 便利版带的是「首次运行.bat」，它传 --first-run 进来。
+        // 也让"配置文件还不存在"这一情形自动触发 —— 用户下载解压后直接双击 exe 时，
+        // 这就是他想要的下一步。用 Dispatcher 排到首次刷新之后再跑，避免和它抢同一批端口探测。
+        if (WantsFirstRunSetup())
+        {
+            Dispatcher.BeginInvoke(
+                new Action(() => OnRunSetupClick(this, new RoutedEventArgs())),
+                System.Windows.Threading.DispatcherPriority.Background);
+        }
+    }
+
+    // 本次启动是否应当自动跑一次一键配置。
+    //
+    // 只在显式带 --first-run 时跑（便利包里的「首次运行.bat」会传）。
+    // 曾经用「配置文件不存在」当判据，但那会误伤：配置文件只在用户点过
+    // 「设置 → 保存」后才生成，于是一个从没保存过设置、但一切正常的机器
+    // 每次启动都会跑一遍配置 —— 白做一遍还可能弹出误导提示。
+    // 直接双击 exe 的新用户由体检卡片引导，不需要猜测意图。
+    private static bool WantsFirstRunSetup()
+    {
+        foreach (var arg in Environment.GetCommandLineArgs())
+        {
+            if (string.Equals(arg, "--first-run", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // 关闭窗口：按配置最小化到托盘，或在确认后真正退出。
@@ -180,6 +210,10 @@ public partial class MainWindow : Window
             ApplyResult(BridgeDot, BridgeStateText, BridgeDetailText, bridgeTask.Result);
             ApplyResult(DshDot, DshStateText, DshDetailText, dshTask.Result);
 
+            // 体检跟着一起刷：它回答的是"现在缺什么、下一步做什么"，
+            // 而这些东西会随用户操作实时变化（启动服务、填白名单、登录 QQ）。
+            await RefreshHealthAsync(_shutdown.Token).ConfigureAwait(true);
+
             BuildDetails(bridgeTask.Result);
             SubtitleText.Text = $"最后更新 {DateTime.Now:HH:mm:ss}";
 
@@ -196,6 +230,173 @@ public partial class MainWindow : Window
         finally
         {
             _refreshing = false;
+        }
+    }
+
+    // ── 体检 ──
+
+    // 体检列表的一行（ItemsControl 绑定用，成员必须是公开属性）。
+    private sealed record HealthRow(string Icon, string Name, string Detail, string NextStep);
+
+    // 刷新体检：算出"现在缺什么、下一步做什么"并显示出来。
+    //
+    // 它回答的是首次部署时最容易卡住的问题。所有探测都是低成本的本地操作
+    //（端口连接 + 一次 /api/status），跟着定时刷新一起跑不会造成负担。
+    private async Task RefreshHealthAsync(CancellationToken token)
+    {
+        var config = CurrentConfig;
+
+        // 端口探测彼此独立，并行做。OneBot 只要 3000 在听就算起来了。
+        var dshPortTask = PortProbe.IsPortOpenAsync(config.Dsh.Port, token);
+        var snowLumaPortTask = PortProbe.IsPortOpenAsync(config.SnowLuma.PreferredWebUiPort, token);
+        var bridgePortTask = PortProbe.IsPortOpenAsync(config.Bridge.ConsolePort, token);
+        var oneBotPortTask = PortProbe.IsPortOpenAsync(3000, token);
+
+        await Task.WhenAll(dshPortTask, snowLumaPortTask, bridgePortTask, oneBotPortTask)
+            .ConfigureAwait(true);
+
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        // 管理员 QQ 与白名单以**桥接**为准 —— 它们是桥接的配置，不是本地的。
+        BridgeStatus? status = null;
+        if (bridgePortTask.Result)
+        {
+            try
+            {
+                using var client = new BridgeApiClient(CurrentEndpoints.BridgeConsole, TimeSpan.FromSeconds(5));
+                status = await client.GetStatusAsync(token).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                // 读不到就让体检把这一项标成"读不到"，不因此中断整轮刷新。
+            }
+        }
+
+        // 目录是否有效要看特征文件，不能只看配置里有没有填。
+        var environment = new FirstRunCheck.Environment(
+            DshHomeExists: Directory.Exists(config.Dsh.HomeDirectory),
+            DshPortOpen: dshPortTask.Result,
+            SnowLumaDir: ServiceLocator.IsSnowLuma(config.SnowLuma.InstallDirectory)
+                ? config.SnowLuma.InstallDirectory
+                : null,
+            BridgeDir: ServiceLocator.IsBridge(config.Bridge.Directory)
+                ? config.Bridge.Directory
+                : null,
+            SnowLumaWebUiOpen: snowLumaPortTask.Result,
+            OneBotPortOpen: oneBotPortTask.Result,
+            BridgeConsoleOpen: bridgePortTask.Result);
+
+        var report = FirstRunCheck.Inspect(config, environment, status);
+
+        HealthList.ItemsSource = report.Blocking
+            .Select(item => new HealthRow(
+                item.State == FirstRunCheck.CheckState.Missing ? "✗" : "!",
+                item.Name,
+                item.Detail,
+                item.NextStep ?? string.Empty))
+            .ToList();
+
+        HealthReadyText.Visibility = report.ReadyToChat ? Visibility.Visible : Visibility.Collapsed;
+
+        var missing = report.Items.Count(i => i.State == FirstRunCheck.CheckState.Missing);
+        var pending = report.Items.Count(i => i.State == FirstRunCheck.CheckState.Pending);
+
+        HealthSummaryText.Text = report.ReadyToChat
+            ? $"6 项全部通过"
+            : $"{missing} 项缺失 · {pending} 项待处理";
+    }
+
+    private async void OnRefreshHealthClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await RefreshHealthAsync(_shutdown.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // 关窗时取消属于正常路径。
+        }
+    }
+
+    // 一键配置：把能自动做的都做掉，需要人做的逐条说清。
+    private async void OnRunSetupClick(object sender, RoutedEventArgs e)
+    {
+        SetupRunButton.IsEnabled = false;
+        SetupResultText.Visibility = Visibility.Visible;
+        SetupResultText.Text = "正在配置…";
+
+        try
+        {
+            var config = CurrentConfig;
+            var results = new List<SetupDeployer.StepResult>();
+
+            // 先准备 WebUI 密码 —— 必须在 SnowLuma 启动之前，它的密码是启动时读环境变量定的。
+            var generated = SetupDeployer.EnsureBootstrapPassword(config);
+            results.Add(generated
+                ? new SetupDeployer.StepResult(
+                    "SnowLuma 管理密码",
+                    SetupDeployer.StepOutcome.Done,
+                    "已生成，下次启动 SnowLuma 时自动应用（你不需要记住它）")
+                : new SetupDeployer.StepResult(
+                    "SnowLuma 管理密码",
+                    SetupDeployer.StepOutcome.Skipped,
+                    "已有"));
+
+            var deployer = new SetupDeployer(config);
+            results.AddRange(await deployer.RunAsync(null, _shutdown.Token).ConfigureAwait(true));
+
+            // 登录产生的新会话要留下，下次就不必再登一次。
+            if (deployer.RefreshedSessionCookie is not null)
+            {
+                config.SnowLuma.SessionCookieProtected = deployer.RefreshedSessionCookie;
+            }
+
+            // 只有真改了东西才落盘，避免无谓写文件。
+            if (generated || deployer.RefreshedSessionCookie is not null)
+            {
+                AppConfigStore.Save(config);
+            }
+
+            SetupResultText.Text = string.Join(
+                Environment.NewLine,
+                results.Select(r =>
+                {
+                    var mark = r.Outcome switch
+                    {
+                        SetupDeployer.StepOutcome.Done => "✓",
+                        SetupDeployer.StepOutcome.Skipped => "·",
+                        SetupDeployer.StepOutcome.NeedsUser => "!",
+                        _ => "✗",
+                    };
+
+                    return $"{mark} {r.Name}：{r.Message}";
+                }));
+        }
+        catch (OperationCanceledException)
+        {
+            SetupResultText.Text = "已取消。";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            // 配置过程只做本地 HTTP 调用，异常类型有限；不向上抛，避免定时器回调里崩进程。
+            SetupResultText.Text = $"配置失败：{ex.GetType().Name}: {ex.Message}";
+        }
+        finally
+        {
+            SetupRunButton.IsEnabled = true;
+
+            // 配置完立刻重体检一次，让用户看到结果。
+            try
+            {
+                await RefreshHealthAsync(_shutdown.Token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                // 忽略。
+            }
         }
     }
 

@@ -192,6 +192,37 @@ def publish_dsqq(target: Path) -> None:
         sys.exit("DSQQ 发布失败")
 
 
+def write_launcher(target: Path) -> None:
+    """
+    写「首次运行.bat」。
+
+    编码用 GBK（cp936）：中文 Windows 的 cmd 默认代码页就是它。
+    写成 UTF-8 的话，cmd 会把中文读成乱码 —— 而这个文件的作用恰恰是
+    让第一次用的人看懂提示，乱码等于白写。
+    """
+    text = """@echo off
+cd /d "%~dp0"
+echo.
+echo   DSQQ 便携版 —— 首次运行
+echo   ================================
+echo.
+echo   接下来会自动做一次配置：
+echo     · 检查 DSH / SnowLuma / qq-bridge 是否就绪
+echo     · 补上 OneBot 端口、把管理员与白名单写进桥接
+echo.
+echo   需要你本人做的只有两件：
+echo     1. 在 SnowLuma 控制台同意协议并扫码登录 QQ
+echo     2. 在 DSQQ 里勾选要启用的群
+echo.
+echo   按任意键启动 DSQQ...
+pause >nul
+
+start "" "DSQQ.exe" --first-run
+"""
+    path = target / "首次运行.bat"
+    path.write_text(text, encoding="gbk", newline="\r\n")
+
+
 def write_readme(target: Path, version: str) -> None:
     """写使用说明。用 UTF-8 无 BOM 并强制 CRLF —— 记事本打开不乱码、换行正常。"""
     text = f"""DSQQ 便携版 {version}
@@ -207,17 +238,18 @@ def write_readme(target: Path, version: str) -> None:
 1. 前提：这台机器上已经装好 DSH（DeepSeek Harness）并登录过。
    DSQQ 会自动找到它（默认在 %USERPROFILE%\\.dsh）。
 
-2. 双击 DSQQ.exe。
+2. 双击「首次运行.bat」。
+   它会启动 DSQQ 并自动做一次配置：
+     · 检查 DSH / SnowLuma / qq-bridge 是否就绪
+     · 补上 OneBot 端口（3000 / 3001）
+     · 把管理员 QQ 与白名单写进桥接
+   界面上的「体检」卡片会逐条告诉你现在缺什么、下一步做什么。
 
-3. 到「服务管理」页点「一键启动」。
-   它会按顺序拉起 SnowLuma 和 qq-bridge，并等端口就绪。
-
-4. 首次需要登录 QQ：
-   在「服务管理」页点「打开 SnowLuma 控制台」，
-   在那边同意用户协议并用 QQ 扫码登录（只需一次）。
-
-5. 回到 DSQQ，到「桥接控制台 → 白名单」页，
-   填上你自己的 QQ 号（作为管理员）并勾选要启用的群，保存。
+3. 需要你本人做的只有两件（程序无法代劳）：
+     · QQ 登录：到「服务管理」页点「打开 SnowLuma 控制台」，
+       在那边同意用户协议并用 QQ 扫码登录（只需一次）。
+     · 勾群：登录后回到 DSQQ，「桥接控制台 → 白名单」页
+       填上你自己的 QQ 号并勾选要启用的群，保存。
 
 完成。之后在群里 @ 她 就会回话。
 
@@ -226,7 +258,8 @@ def write_readme(target: Path, version: str) -> None:
 ────────────────────────────────────────
 
 DSQQ.exe            控制台本体
-services\\snowluma   负责连 QQ（自带 node.exe）
+首次运行.bat        首次部署入口（之后直接开 DSQQ.exe 即可）
+services\\snowluma   负责连 QQ（自带 node.exe，qq-bridge 也复用它）
 services\\qq-bridge  负责接 AI
 
 不要把 DSQQ.exe 单独挪出来 —— 它靠 services\\ 目录找组件。
@@ -238,6 +271,9 @@ services\\qq-bridge  负责接 AI
 
 · 收不到群消息 / 群列表是空的
   → 多半是 QQ 没登录。到「服务管理」页点「打开 SnowLuma 控制台」检查登录状态。
+
+· 体检卡片说"OneBot 接口没在监听"
+  → 同上，OneBot 端口是在 QQ 登录成功之后才开的。
 
 · 提示找不到 DSH
   → 先安装并运行一次 DSH。它是 AI 能力的来源，不包含在这个包里。
@@ -300,6 +336,7 @@ def main() -> None:
     print(f"        {br_count} 个文件，{br_bytes / 1048576:.1f} MB")
     install_bridge_deps(br_dst, node, pnpm)
 
+    write_launcher(target)
     write_readme(target, version)
 
     # 4) 压缩
