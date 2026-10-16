@@ -207,7 +207,13 @@
             <!-- ══ 她是谁：人设 / 角色 / 仿真提示词 三层合一 ══ -->
             <TabItem Header="她是谁">
                 <Grid Margin="12">
+                    <!--
+                        行分配（务必保持一一对应）：0 说明A / 1 说明B / 2 审计区 / 3 滚动内容 / 4 底部提示。
+                        曾经把两段说明都写成 Grid.Row="0"，结果文字完全重叠、无法阅读 ——
+                        WPF 不会为这种事报错，只能靠截图发现。
+                    -->
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -216,10 +222,10 @@
 
                     <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.78" LineHeight="19"
                                Text="【三者如何一起起作用】三层会同时进入她的上下文，是叠加关系，不是三选一。① 仿真提示词是底子：由 DSH 当系统提示词注入，规定二代仿真怎么运作 —— 文本不会自动发出、必须用工具发言，它最稳定、也最少改。② 角色卡紧接着自动注入：提供身份与背景，实测约 5000 字，每次唤醒都会整段带上，所以卡片越大、每条消息的成本越高。③ 人设注入在用户消息的最前面：用于临时微调语气与称呼，改它不必碰角色卡。越靠上的越不容易被覆盖，越靠下的越贴近当下这一次对话。" />
-                    <TextBlock Grid.Row="0" Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.78" LineHeight="19"
+                    <TextBlock Grid.Row="1" Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.78" LineHeight="19"
                                Text="【冲突时谁说了算】没有任何自动仲裁 —— 三者矛盾时由模型自行权衡，所以下面会主动检查并提示。已知的两类冲突：· 人设的「叫什么」与角色卡正文里的身份表述会同时定义「她是谁」，建议只留一处，或把人设该项留空；· 角色卡里若残留一代指令（[SILENT]、空格分句等），在二代仿真下会与工具协议直接冲突 —— 最坏的情况是模型照抄 [SILENT] 而不调用发送工具，表现为「回话了但其实没发出去」。" />
 
-                    <Border Grid.Row="1" Margin="0,10,0,0" Padding="12" CornerRadius="4"
+                    <Border Grid.Row="2" Margin="0,10,0,0" Padding="12" CornerRadius="4"
                             Background="{DynamicResource DsqqSurfaceAlt}">
                         <StackPanel>
                             <TextBlock Text="一致性检查与上下文占用" FontWeight="SemiBold" />
@@ -245,15 +251,16 @@
                         </StackPanel>
                     </Border>
 
-                    <ScrollViewer Grid.Row="2" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="3" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
 
                             <!-- ① 人设：语气层 -->
                             <Border Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
                                 <StackPanel>
                                     <TextBlock Text="① 人设（语气层）" FontWeight="SemiBold" FontSize="14" />
-                                    <TextBlock Margin="0,4,0,10" Opacity="0.65" TextWrapping="Wrap"
-                                               Text="只影响语气与说话方式，安全规则不受此处影响。" />
+                                    <!-- 这里刻意不再写说明：PersonaNoteText 会在载入时显示桥接下发的 note，
+                                         两处都写就会重复（本页早先出现过两次同一句话）。 -->
+
 
                                     <CheckBox x:Name="PersonaEnabledCheck" Content="启用人设（只影响语气与说话方式）" />
 
@@ -373,7 +380,7 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <TextBlock Grid.Row="3" x:Name="IdentityHintText" Margin="2,10,0,0" Opacity="0.55" TextWrapping="Wrap"
+                    <TextBlock Grid.Row="4" x:Name="IdentityHintText" Margin="2,10,0,0" Opacity="0.55" TextWrapping="Wrap"
                                Text="三层都保存后，下一条消息即生效（仿真提示词需重启 DSH）。" />
                 </Grid>
             </TabItem>
