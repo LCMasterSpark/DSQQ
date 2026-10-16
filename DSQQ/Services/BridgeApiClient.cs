@@ -335,11 +335,25 @@ public sealed class BridgeApiClient : IDisposable
     public Task<SessionModeResponse?> GetSessionModeAsync(CancellationToken cancellationToken = default)
         => GetAsync<SessionModeResponse>("/api/config/session-mode", cancellationToken);
 
-    // 设置会话模式；当前桥接仅支持 per-conversation。
+    // 设置会话模式：shared（共享，跨群连续记忆）或 per-conversation（各自独立）。
+    // 切换会回收并重建各会话，所以第一条消息会稍慢。
     public Task<bool> SetSessionModeAsync(string sessionMode, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionMode);
         return PostAsync("/api/config/session-mode", new { sessionMode }, cancellationToken);
+    }
+
+    // 读取二代仿真配置（crossGroup 等开关在这里）。
+    public Task<SocialV2ConfigResponse?> GetSocialV2ConfigAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SocialV2ConfigResponse>("/api/socialV2/config", cancellationToken);
+
+    // 保存二代仿真配置。
+    // 桥接侧是**读取-合并-写入**语义：只提交要改的字段即可，未提交的保持现状。
+    // 因此传单个开关是安全的，不会把其它配置清掉。
+    public Task<bool> SaveSocialV2ConfigAsync(object patch, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(patch);
+        return PostAsync("/api/socialV2/config", patch, cancellationToken);
     }
 
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)

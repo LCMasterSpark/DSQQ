@@ -34,6 +34,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -51,6 +52,33 @@
                     </Border>
 
                     <Border Grid.Row="1" Margin="0,12,0,0" Padding="14" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="会话与上下文" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,4,0,10" Opacity="0.65" TextWrapping="Wrap"
+                                       Text="决定她在多个群之间「记不记得住」：共享会话把所有群与私聊合并成同一段上下文，她会记得在任何群说过什么、也不容易重复发言，代价是各群记忆混在一起、同一时刻只能处理一处；按会话分开则每个群各自独立。" />
+
+                            <RadioButton x:Name="SessionModeSharedRadio"
+                                         Content="共享会话（跨群连续记忆 —— 所有群共用一段上下文）"
+                                         Margin="0,2" Checked="OnSessionModeChanged" />
+                            <RadioButton x:Name="SessionModePerConversationRadio"
+                                         Content="按会话分开（每个群各自独立，互不干扰）"
+                                         Margin="0,2" Checked="OnSessionModeChanged" />
+
+                            <CheckBox x:Name="CrossGroupCheck" Margin="0,10,0,0"
+                                      Content="允许跨群读取（她能主动查看其它群的消息，但上下文仍各自独立）" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="SaveSessionButton" Content="保存" Width="80" Height="28"
+                                        Style="{StaticResource MahApps.Styles.Button.Flat}"
+                                        Click="OnSaveSessionClick" />
+                                <TextBlock x:Name="SessionHintText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                           Opacity="0.65" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="14" CornerRadius="4"
                             Background="{DynamicResource DsqqSurface}">
                         <StackPanel>
                             <TextBlock Text="模型与推理强度" FontWeight="SemiBold" />
@@ -72,7 +100,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="14" CornerRadius="4"
+                    <Border Grid.Row="3" Margin="0,12,0,0" Padding="14" CornerRadius="4"
                             Background="{DynamicResource DsqqSurface}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="会话" FontWeight="SemiBold" />

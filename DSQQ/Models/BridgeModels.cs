@@ -713,7 +713,28 @@ public sealed class SessionModeResponse
     [JsonPropertyName("sessionCount")]
     public int SessionCount { get; set; }
 
-    // 共享会话模式的所有者 key（该模式当前已停用，仅作展示）。
+    // 共享会话在 state.sessions 里的注册表键（如 __shared__），不是真实群号。
+    // 该模式已重做并可用：注册表键与业务 key 分离，回收会话不会再误删共享映射。
     [JsonPropertyName("ownerKey")]
     public string? OwnerKey { get; set; }
+}
+
+// 二代仿真配置（/api/socialV2/config）。
+// 只映射当前用得上的开关；桥接那边的配置项远多于此。
+public sealed class SocialV2ConfigResponse
+{
+    [JsonPropertyName("config")]
+    public SocialV2Config? Config { get; set; }
+}
+
+// 二代仿真配置本体。
+public sealed class SocialV2Config
+{
+    // 是否允许跨群读取：各群上下文仍独立，但她能主动查看其它群的消息。
+    [JsonPropertyName("crossGroup")]
+    public bool CrossGroup { get; set; }
+
+    // 会话模式（与 /api/config/session-mode 同源）。
+    [JsonPropertyName("sessionMode")]
+    public string? SessionMode { get; set; }
 }

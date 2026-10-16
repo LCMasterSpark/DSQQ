@@ -105,4 +105,52 @@ public sealed class BridgeApiLiveTests
             Assert.False(string.IsNullOrWhiteSpace(g.Name), "群名不应为空 —— 字段名可能不匹配");
         }
     }
+
+    [Fact]
+    public async Task 真实的会话模式应能解析()
+    {
+        if (!await BridgeIsUpAsync())
+        {
+            return;
+        }
+
+        using var client = new BridgeApiClient(BaseUri, TimeSpan.FromSeconds(10));
+        var mode = await client.GetSessionModeAsync();
+
+        Assert.NotNull(mode);
+
+        // 只可能是这两个值；若字段名不匹配会得到 null。
+        Assert.True(
+            mode!.SessionMode is "shared" or "per-conversation",
+            $"sessionMode 解析异常：{mode.SessionMode ?? "(null)"}");
+
+        // 共享模式的注册表键必须是独立键，而不是某个真实群号 ——
+        // 借用真实群号正是当初该模式出缺陷的根源。
+        if (mode.OwnerKey is not null)
+        {
+            Assert.DoesNotContain("group:", mode.OwnerKey, StringComparison.Ordinal);
+            Assert.DoesNotContain("private:", mode.OwnerKey, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task 真实的社会化配置应能解析出跨群开关()
+    {
+        if (!await BridgeIsUpAsync())
+        {
+            return;
+        }
+
+        using var client = new BridgeApiClient(BaseUri, TimeSpan.FromSeconds(10));
+        var social = await client.GetSocialV2ConfigAsync();
+
+        // /api/socialV2/config 的响应是 {"ok":true,"config":{...}} —— 有一层包装。
+        // 少解析这一层不会报错，只会让 CrossGroup 静默为 false（与活跃度那次是同类问题）。
+        Assert.NotNull(social);
+        Assert.NotNull(social!.Config);
+
+        // sessionMode 在这里也有一份，且应与专用端点一致；不一致说明两处读的不是同一份配置。
+        var mode = await client.GetSessionModeAsync();
+        Assert.Equal(mode?.SessionMode, social.Config!.SessionMode);
+    }
 }

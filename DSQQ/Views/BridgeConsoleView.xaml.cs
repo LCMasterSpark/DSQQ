@@ -147,6 +147,7 @@ public partial class BridgeConsoleView : UserControl
         await LoadPersonaAsync();
         await LoadQuotaAsync();
         await LoadActivityAsync();
+        await LoadSessionContextAsync();
         await LoadTokensAsync();
         await LoadRolesAsync();
         await LoadSlangAsync();
@@ -836,6 +837,100 @@ public partial class BridgeConsoleView : UserControl
             ? $"已保存 {preset}；需重启 DSH 生效。"
             : "保存被拒绝：可能缺少安全不变量（权限边界、令牌、角色注入等）或正文过短。";
     }
+    // ── 会话与上下文 ──
+
+    // 程序化设置单选/勾选时抑制事件，避免把"载入"当成"用户改动"。
+    private bool _suppressSessionUiEvents;
+
+    // 载入会话模式与跨群读取开关。
+    private async Task LoadSessionContextAsync()
+    {
+        var mode = await _client.GetSessionModeAsync();
+        var social = await _client.GetSocialV2ConfigAsync();
+
+        if (mode is null && social is null)
+        {
+            SessionHintText.Text = "未能读取会话设置（桥接可能未运行）。";
+            return;
+        }
+
+        _suppressSessionUiEvents = true;
+        try
+        {
+            var shared = string.Equals(mode?.SessionMode, "shared", StringComparison.OrdinalIgnoreCase);
+            SessionModeSharedRadio.IsChecked = shared;
+            SessionModePerConversationRadio.IsChecked = !shared;
+
+            CrossGroupCheck.IsChecked = social?.Config?.CrossGroup == true;
+        }
+        finally
+        {
+            _suppressSessionUiEvents = false;
+        }
+
+        DescribeSessionState(mode);
+    }
+
+    // 把当前模式说清楚：共享模式有哪些代价、跨群读取是否开启。
+    private void DescribeSessionState(SessionModeResponse? mode)
+    {
+        var shared = SessionModeSharedRadio.IsChecked == true;
+        var cross = CrossGroupCheck.IsChecked == true;
+
+        var parts = new List<string>
+        {
+            shared
+                ? $"当前：共享会话（{mode?.ConversationCount ?? 0} 个会话组共用 {mode?.SessionCount ?? 0} 段上下文）"
+                : $"当前：按会话分开（{mode?.SessionCount ?? 0} 段独立上下文）",
+            cross ? "跨群读取：已开启" : "跨群读取：关闭",
+        };
+
+        SessionHintText.Text = string.Join(" · ", parts);
+    }
+
+    private void OnSessionModeChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSessionUiEvents || !IsLoaded)
+        {
+            return;
+        }
+
+        // 切换模式会回收并重建各会话，先把代价讲明白。
+        SessionHintText.Text = SessionModeSharedRadio.IsChecked == true
+            ? "待保存：将切换为共享会话。切换会回收并重建各会话，之后第一条消息会稍慢。"
+            : "待保存：将切换为按会话分开。切换会回收并重建各会话。";
+    }
+
+    private async void OnSaveSessionClick(object sender, RoutedEventArgs e)
+    {
+        var wantShared = SessionModeSharedRadio.IsChecked == true;
+        var wantMode = wantShared ? "shared" : "per-conversation";
+
+        var current = await _client.GetSessionModeAsync();
+        var modeChanged = !string.Equals(current?.SessionMode, wantMode, StringComparison.OrdinalIgnoreCase);
+
+        var okMode = await _client.SetSessionModeAsync(wantMode);
+        if (!okMode)
+        {
+            SessionHintText.Text = "保存失败：桥接未接受会话模式（请确认桥接在运行）。";
+            return;
+        }
+
+        var okCross = await _client.SaveSocialV2ConfigAsync(new { crossGroup = CrossGroupCheck.IsChecked == true });
+        if (!okCross)
+        {
+            SessionHintText.Text = "会话模式已保存，但跨群读取开关保存失败。";
+            await LoadSessionContextAsync();
+            return;
+        }
+
+        SessionHintText.Text = modeChanged
+            ? "已保存。会话模式已切换，各会话会被回收重建 —— 下一条消息会稍慢。"
+            : "已保存（会话模式未变，仅更新了跨群读取）。";
+
+        await LoadSessionContextAsync();
+    }
+
     // ── 活跃度（唤醒与发送频率）──
     //
     // 字段清单只写一份：载入、增量收集、范围校验都从这张表驱动，
