@@ -194,7 +194,7 @@ public partial class BridgeConsoleView : UserControl
         }
 
         var snowLuma = status.SnowLuma;
-        ModelText.Text = $"DSH 就绪 {status.DshReady} / SnowLuma 连接 {snowLuma?.Connected} / 接收健康 {snowLuma?.Good}";
+        ModelText.Text = $"DSH 就绪 {status.DshReady} / SnowLuma {SnowLumaHealthText.Describe(snowLuma)}";
     }
 
     // 载入白名单。

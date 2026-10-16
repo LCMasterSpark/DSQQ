@@ -3050,7 +3050,15 @@ function personaInjection() {
   //      阈值取很宽，措辞必须留余地。
   const SNOWLUMA_STATUS_POLL_MS = 60_000;
   const SNOWLUMA_SILENCE_WARN_MS = Math.max(60_000, Number(cfg.snowluma?.silenceWarnMs) || 10 * 60_000);
+  /** 与 SnowLuma 失联的起点（0 = 当前是连着的）。由下面 bot 的 open/close 维护。 */
+  let snowlumaDownSince = Date.now();
   const snowlumaHealth = {
+    // ⚠️ 必须显式初始化。它原先只在 bot 的 open/close 里被赋值，于是「第一次连上之前」
+    // 它是 `undefined` —— 而 `JSON.stringify` 会**整个丢掉值为 undefined 的键**，
+    // /api/status 里就没有 connected 这一项了。用户 2026-10-16 那次故障正是这样：
+    // DSQQ 总览的「SnowLuma 连接」渲染成空白、旁边「接收健康」还是 True，
+    // 看上去毫无异常，实际一个包都没收到。
+    connected: false,
     lastPacketAt: 0,      // 最近一个来自 SnowLuma 的事件包（含 meta/心跳）
     lastPacketKind: '',
     accountOnline: null,  // bot_status 的 online/offline（需要较新的 SnowLuma 运行时）
@@ -3082,6 +3090,16 @@ function personaInjection() {
     const now = Date.now();
     const agoMs = snowlumaHealth.lastPacketAt ? now - snowlumaHealth.lastPacketAt : null;
     const silent = snowlumaHealth.lastPacketAt > 0 && agoMs > SNOWLUMA_SILENCE_WARN_MS;
+    // 「**连不上**」与「连上了但**没动静**」是两件不同的事，必须分开报。
+    //   前者：桥接 ↔ SnowLuma 这条 WS 链路根本没建立（SnowLuma 没在跑，或它的
+    //         OneBot 端口在听却不应答握手）；
+    //   后者：链路通了，但 QQ 数据进不来。
+    // 为什么必须补这一支：用户 2026-10-16 撞到的正是前者，而当时这里返回的
+    // `silent: false / degraded: false / hint: null` —— **界面上一切正常，实际一个包都没收到**。
+    // `silent` 要求 `lastPacketAt > 0`，而从未连上时它恒为 0，于是这个最严重的故障
+    // 恰好落进了"看起来最健康"的那一支。诊断盲区就是这么来的。
+    const downMs = snowlumaDownSince ? now - snowlumaDownSince : 0;
+    const offline = downMs > SNOWLUMA_SILENCE_WARN_MS;
     // 只有 SnowLuma **明确自报** good=false 才算"确认坏了"（接收链路）。
     // 「静默」只能说明连它的进程/WS 都没动静了 —— 那是**另一个**故障面，措辞必须分开。
     const confirmed = snowlumaHealth.good === false;
@@ -3090,6 +3108,11 @@ function personaInjection() {
       hint = 'SnowLuma 自报接收链路异常（good=false）：它的 [Hook] 收不到 QQ 客户端的数据，'
         + '消息进不来。这不是桥接的问题。请查看 SnowLuma 的 logs/snowluma-*.log 里的 [Hook] 行'
         + '（receive path stale / process enumeration timed out），并考虑升级 SnowLuma。';
+    } else if (offline) {
+      hint = `已经有 ${Math.round(downMs / 60000)} 分钟没能连上 SnowLuma 的 OneBot 服务`
+        + '（ws 链路一直没建立，一个事件包都没收到）。先确认 SnowLuma 在运行、QQ 已登录；'
+        + '如果它确实在跑，那多半是握手卡住了 —— 桥接每 15 秒会自己重试一次，'
+        + '看日志里有没有「握手超时」。';
     } else if (silent) {
       hint = `已连接但 ${Math.round(agoMs / 60000)} 分钟没有收到任何事件包（连 30 秒一次的心跳都没有）。`
         + '这说明 SnowLuma 的 OneBot 服务/进程本身可能已经卡住或不在了，而不只是收不到 QQ 数据；'
@@ -3106,8 +3129,10 @@ function personaInjection() {
       goodError: snowlumaHealth.goodError || null,
       lastPacketAgoMs: agoMs,
       lastPacketKind: snowlumaHealth.lastPacketKind || null,
+      disconnectedSec: downMs ? Math.round(downMs / 1000) : null,
       silent,
-      degraded: confirmed || silent,
+      offline,
+      degraded: confirmed || silent || offline,
       hint,
     };
   }
@@ -3119,8 +3144,12 @@ function personaInjection() {
       snowlumaHealth.degraded = true;
       snowlumaHealth.reason = snap.hint ?? '';
       log(`⚠️ SnowLuma 上游不健康：${snap.hint}`);
-      log('   这不是桥接的问题：桥接没有任何原生/注入面，也不控制 SnowLuma 或 QQ。');
-      log('   排查：SnowLuma 的 logs/snowluma-*.log 里搜 [Hook]（看是否有 "receive path stale" 或 "process enumeration timed out"）。');
+      // 「上游自报收不到 QQ 数据」才谈得上 [Hook] 那条排查线；「压根没连上」时
+      // 说这些是误导 —— 那时候该看的是 SnowLuma 在不在跑。
+      if (snap.good === false) {
+        log('   这不是桥接的问题：桥接没有任何原生/注入面，也不控制 SnowLuma 或 QQ。');
+        log('   排查：SnowLuma 的 logs/snowluma-*.log 里搜 [Hook]（看是否有 "receive path stale" 或 "process enumeration timed out"）。');
+      }
     } else if (!snap.degraded && snowlumaHealth.degraded) {
       snowlumaHealth.degraded = false;
       snowlumaHealth.reason = '';
@@ -12050,6 +12079,7 @@ function dailyQuotaBucket() {
     // 连接成功后顺手确认一下 token 是否已跟当前账号对齐；不一致就写回 config.json，
     // 让 MCP 工具（另一个进程）也能拿到正确的 token。
     void syncTokenToFile();
+    snowlumaDownSince = 0;   // 连上了 → 清掉「失联起点」，/api/status 的 offline 跟着复位
   });
 
   /**
@@ -12148,6 +12178,7 @@ function dailyQuotaBucket() {
 
   bot.on('close', (info) => {
     snowlumaHealth.connected = false;
+    if (!snowlumaDownSince) snowlumaDownSince = Date.now();
     log(`SnowLuma 连接断开（code=${info?.code ?? '?'}），重连中…`);
     // 连不上时最常见的原因就是换了 QQ 账号 → token 变了；顺手自愈。
     // 注意 1006 在**每次启动**都可能出现一次：HTTP token 与 WS token 是两个不同的值，

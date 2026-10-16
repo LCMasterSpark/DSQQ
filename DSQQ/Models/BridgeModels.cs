@@ -80,6 +80,15 @@ public sealed class BridgeSnowLumaStatus
     [JsonPropertyName("lastPacketKind")]
     public string? LastPacketKind { get; set; }
 
+    // 与 SnowLuma 失联了多久（秒）。null 表示当前连着。
+    // 与 Silent 的区别：这个说的是「ws 链路根本没建立」，Silent 说的是「链路通了但没数据」。
+    [JsonPropertyName("disconnectedSec")]
+    public long? DisconnectedSec { get; set; }
+
+    // 「连不上」被判定为故障（超过阈值仍未建立连接）。
+    [JsonPropertyName("offline")]
+    public bool Offline { get; set; }
+
     // 是否被判定为退化。
     [JsonPropertyName("degraded")]
     public bool Degraded { get; set; }
