@@ -68,3 +68,15 @@ $RECYCLE.BIN/
 
 # 便携包产物（体积大，不入库）
 packaging/dist/
+
+# ── 便携打包产物与中间物 ──
+packaging/dist/
+packaging/cache/
+
+# ── 并入的 qq-bridge：装出来的依赖与运行时状态不入库 ──
+# node_modules 是 pnpm 的链接结构（几百个符号链接 + 硬链接），
+# 提交它既臃肿又需要接收方有对应权限，改为打包时用 hoisted 模式现装。
+qq-bridge/node_modules/
+qq-bridge/.pnpm-store/
+qq-bridge/state/
+qq-bridge/config.json

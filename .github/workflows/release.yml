@@ -32,6 +32,23 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # 便携包要用 Python 组装，并用 pnpm 现装桥接依赖
+      # （仓库里不带 node_modules —— 它是 pnpm 的链接结构，复制会膨胀 8 倍）。
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
       - name: 解析版本号
         id: version
         shell: pwsh
@@ -96,17 +113,30 @@ jobs:
 
           Get-ChildItem publish/*.zip | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
 
+      # 便携包：DSQQ + SnowLuma + qq-bridge，解压即用。
+      # 这是给最终用户的形态 —— 他只需要面对这一个仓库。
+      - name: 构建便携包
+        shell: pwsh
+        run: |
+          # SnowLuma 从它自己的公开 Release 下载（CI 在 GitHub 内网取，很快）；
+          # DSQQ 复用上一步已发布的 self-contained，省一次 170 MB 的发布。
+          python packaging/build-portable.py --dsqq-from publish/self-contained
+
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: DSQQ-${{ steps.version.outputs.value }}
-          path: publish/*.zip
+          path: |
+            publish/*.zip
+            packaging/dist/*.zip
 
       - name: 创建 Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/*.zip
+          files: |
+            publish/*.zip
+            packaging/dist/*.zip
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

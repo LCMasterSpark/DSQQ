@@ -6,6 +6,7 @@
     packaging/dist/DSQQ-Portable-<版本>.zip
     packaging/dist/DSQQ-Portable-<版本>/
         ├─ DSQQ.exe ...              控制台（自包含，免装 .NET）
+        ├─ 首次运行.bat               首次部署入口
         ├─ 使用说明.txt
         └─ services/
             ├─ snowluma/             QQ 接入（自带 node.exe，两个组件共用）
@@ -13,6 +14,22 @@
 
 目录名 services/ 不是随便起的：DSQQ 的 ServiceLocator 会优先在
 <程序目录>/services/<名字> 下找组件，解压到哪都能自动认出来。
+
+═══ 两个组件的来源 ═══
+
+qq-bridge：直接来自本仓库的 qq-bridge/ 目录（已并入，MIT）。
+           node_modules 现装，不复制源目录那份 —— 见 install_bridge_deps 的说明。
+
+SnowLuma：**从它自己的 GitHub Release 下载**。
+          优先用本机已装的那份（--local-snowluma），没有则从网上取。
+          这样 CI 不需要任何预置文件就能构建完整包，
+          「用户只看一个项目」这个目标才成立。
+          下载物缓存在 packaging/cache/，重复构建不重复下载。
+
+          ⚠️ 实测（本机 2026-10）：到 GitHub Release 的 HEAD 请求 2 秒返回，
+          但大文件下载被严重限速 —— 36 MB 的包 15 分钟只下到 3 MB。
+          所以**本地打包请加 --local-snowluma**（用本机已装的那份，秒级完成）；
+          下载路径留给 CI —— 在 GitHub 自己的基础设施上取自己的 Release 没有这个问题。
 
 ═══ 最重要的一条：绝不打包用户数据 ═══
 
@@ -28,19 +45,42 @@ qq-bridge:
 下面 EXCLUDE 里逐条列出，新增目录时务必回头检查这一节。
 """
 
+import argparse
+import io
 import os
 import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
 # ── 路径 ────────────────────────────────────────────────────────────────
-DSQQ_ROOT = Path(r"D:\CPP项目\DSQQ")
-SNOWLUMA_SRC = Path(r"D:\SnowLuma")
-BRIDGE_SRC = Path(r"D:\qq-bridge")
+DSQQ_ROOT = Path(__file__).resolve().parent.parent
 DIST = DSQQ_ROOT / "packaging" / "dist"
+CACHE = DSQQ_ROOT / "packaging" / "cache"
+
+# qq-bridge 来自本仓库（已并入）。
+BRIDGE_SRC = DSQQ_ROOT / "qq-bridge"
+
+# SnowLuma 的默认下载版本；可用 --snowluma-version 覆盖。
+DEFAULT_SNOWLUMA_VERSION = "1.14.22"
+
+# 本机已装 SnowLuma 时的常见位置（--local-snowluma 用它兜底）。
+LOCAL_SNOWLUMA_CANDIDATES = [
+    Path(r"D:\SnowLuma"),
+    Path(os.environ.get("SNOWLUMA_HOME", "")),
+]
+
+# ── 排除规则 ────────────────────────────────────────────────────────────
+# SnowLuma：程序文件全要，用户数据全不要。
+SNOWLUMA_EXCLUDE_DIRS = {"config", "data", "logs"}
+SNOWLUMA_EXCLUDE_FILES: set[str] = set()
+
+# qq-bridge：同理。.pnpm-store 是包管理缓存，不进发行包。
+BRIDGE_EXCLUDE_DIRS = {"state", ".git", ".pnpm-store", "node_modules", "node_modules/.cache"}
+BRIDGE_EXCLUDE_FILES = {"config.json"}
 
 
 def read_version() -> str:
@@ -51,16 +91,6 @@ def read_version() -> str:
     if not m:
         sys.exit("无法从 Directory.Build.props 读出 <Version>")
     return m.group(1).strip()
-
-
-# ── 排除规则 ────────────────────────────────────────────────────────────
-# SnowLuma：程序文件全要，用户数据全不要。
-SNOWLUMA_EXCLUDE_DIRS = {"config", "data", "logs"}
-SNOWLUMA_EXCLUDE_FILES: set[str] = set()
-
-# qq-bridge：同理。.pnpm-store 是包管理缓存（25 MB），不进发行包。
-BRIDGE_EXCLUDE_DIRS = {"state", ".git", ".pnpm-store", "node_modules/.cache"}
-BRIDGE_EXCLUDE_FILES = {"config.json"}
 
 
 def copy_tree(src: Path, dst: Path, exclude_dirs: set[str], exclude_files: set[str]) -> tuple[int, int]:
@@ -106,27 +136,104 @@ def copy_tree(src: Path, dst: Path, exclude_dirs: set[str], exclude_files: set[s
     return count, total
 
 
-def find_node_and_pnpm() -> tuple[Path, Path]:
+def resolve_snowluma(version: str, prefer_local: bool) -> Path:
+    """
+    拿到一份可用的 SnowLuma 程序目录。
+
+    顺序：本机已装的那份（--local-snowluma）→ 缓存里已下载的 → 从 GitHub 下载。
+    返回的目录只含程序文件；用户数据由 copy_tree 的排除规则再挡一道。
+    """
+    if prefer_local:
+        for candidate in LOCAL_SNOWLUMA_CANDIDATES:
+            if candidate and (candidate / "index.mjs").is_file():
+                print(f"        用本机已装的：{candidate}")
+                return candidate
+        print("        本机没找到可用的 SnowLuma，改为下载")
+
+    CACHE.mkdir(parents=True, exist_ok=True)
+    extracted = CACHE / f"snowluma-{version}-win-x64"
+
+    if (extracted / "index.mjs").is_file():
+        print(f"        用缓存：{extracted}")
+        return extracted
+
+    # 优先用完整版（内置 Node.js，用户不必另装）；lite 版需要自备 Node。
+    archive = CACHE / f"SnowLuma-v{version}-win-x64.zip"
+    url = (
+        f"https://github.com/SnowLuma/SnowLuma/releases/download/"
+        f"v{version}/SnowLuma-v{version}-win-x64.zip"
+    )
+
+    if not archive.is_file():
+        print(f"        下载 {url}")
+        try:
+            with urllib.request.urlopen(url, timeout=180) as response, \
+                    open(archive, "wb") as out:
+                shutil.copyfileobj(response, out)
+        except Exception as exc:  # noqa: BLE001 - 网络异常种类多，统一报错退出
+            sys.exit(f"下载 SnowLuma 失败：{exc}\n"
+                     f"可以手动下载后放到 {CACHE}，或用 --local-snowluma 指定本机已装的那份。")
+
+    print(f"        解压到 {extracted}")
+    if extracted.exists():
+        shutil.rmtree(extracted)
+    extracted.mkdir(parents=True)
+
+    with zipfile.ZipFile(archive) as zf:
+        zf.extractall(extracted)
+
+    # 有些包会多套一层同名目录，往下探一层。
+    if not (extracted / "index.mjs").is_file():
+        for child in extracted.iterdir():
+            if child.is_dir() and (child / "index.mjs").is_file():
+                return child
+
+    if not (extracted / "index.mjs").is_file():
+        sys.exit(f"解压后没找到 index.mjs，包结构可能变了：{extracted}")
+
+    return extracted
+
+
+def find_node_and_pnpm(snowluma_dir: Path) -> tuple[Path, Path]:
     """
     找打包时用的 node 与 pnpm。
 
     node 优先用 SnowLuma 自带的那份（它最终也会被打进包里，版本已验证满足
-    qq-bridge 的 >= 22.13）。pnpm 只在**打包时**用来装依赖，不进发行包，
-    所以从 DSH 运行时借。
+    qq-bridge 的 >= 22.13）。
+
+    pnpm 只在**打包时**用来装依赖，不进发行包。查找顺序：
+        1) DSH 运行时自带的那份（开发机上的常见位置）
+        2) PATH 上的 pnpm（CI 用 pnpm/action-setup 装的走这条）
+    两条都没有才报错 —— 因为这是在 CI 上构建完整包的前提。
     """
-    candidates = [
-        SNOWLUMA_SRC / "node.exe",
+    node_candidates = [
+        snowluma_dir / "node.exe",
         Path(os.environ.get("USERPROFILE", "")) / ".dsh" / "dsh-runtimes" /
         "dsh-primary-runtime" / "dependencies" / "node" / "bin" / "node.exe",
     ]
-    node = next((c for c in candidates if c.is_file()), None)
-    if node is None:
-        sys.exit("找不到 node.exe（试过 SnowLuma 与 DSH 运行时）")
+    # CI 上 SnowLuma 自带 node.exe，所以通常第一条就命中；
+    # PATH 上的 node 作为最后兜底。
+    on_path_node = shutil.which("node")
+    if on_path_node:
+        node_candidates.append(Path(on_path_node))
 
-    pnpm = (Path(os.environ.get("USERPROFILE", "")) / ".dsh" / "dsh-runtimes" /
-            "dsh-primary-runtime" / "dependencies" / "pnpm" / "bin" / "pnpm.cjs")
-    if not pnpm.is_file():
-        sys.exit(f"找不到 pnpm：{pnpm}（打包时需要它来安装桥接依赖）")
+    node = next((c for c in node_candidates if c.is_file()), None)
+    if node is None:
+        sys.exit("找不到 node.exe（试过 SnowLuma 自带、DSH 运行时与 PATH）")
+
+    pnpm_candidates = [
+        Path(os.environ.get("USERPROFILE", "")) / ".dsh" / "dsh-runtimes" /
+        "dsh-primary-runtime" / "dependencies" / "pnpm" / "bin" / "pnpm.cjs",
+    ]
+
+    on_path_pnpm = shutil.which("pnpm")
+    if on_path_pnpm:
+        pnpm_candidates.insert(0, Path(on_path_pnpm))
+
+    pnpm = next((c for c in pnpm_candidates if c.is_file()), None)
+    if pnpm is None:
+        sys.exit("找不到 pnpm（试过 PATH 与 DSH 运行时）。"
+                 "打包时需要它安装桥接依赖；CI 上请先 actions/setup-node + pnpm/action-setup。")
 
     return node, pnpm
 
@@ -135,8 +242,8 @@ def install_bridge_deps(bridge_dst: Path, node: Path, pnpm: Path) -> None:
     """
     在打包目录里安装 qq-bridge 的依赖。
 
-    为什么不用源目录那份 node_modules：
-    项目用的是 pnpm，node_modules 里 639 个条目是符号链接、其余大量是硬链接
+    为什么不直接复制仓库里那份 node_modules：
+    项目用的是 pnpm，node_modules 里几百个条目是符号链接、其余大量是硬链接
     （真实文件都在 .pnpm 下）。直接复制会把每个链接解引用成实体副本，
     实测 26 MB 膨胀到 210 MB。改用 hoisted 模式重新安装，得到的是
     npm 风格的扁平结构 —— 无链接、体积正常、用户解压不需要任何特权。
@@ -171,8 +278,24 @@ def install_bridge_deps(bridge_dst: Path, node: Path, pnpm: Path) -> None:
         sys.exit("补丁脚本执行失败")
 
 
-def publish_dsqq(target: Path) -> None:
-    """构建并发布 DSQQ 到目标目录。"""
+def publish_dsqq(target: Path, reuse_from: Path | None = None) -> None:
+    """
+    把 DSQQ 放进目标目录。
+
+    参数 reuse_from：若给出且是有效目录，直接复制它而不重新 publish ——
+    CI 里 release 工作流已经发布过一次 self-contained，没必要再来一遍
+    （单文件包 170 MB，重复发布很费时间）。
+    """
+    if reuse_from is not None and (reuse_from / "DSQQ.exe").is_file():
+        print(f"  [1/4] 复用已发布的 DSQQ：{reuse_from}")
+        for item in reuse_from.iterdir():
+            destination = target / item.name
+            if item.is_dir():
+                shutil.copytree(item, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, destination)
+        return
+
     print("  [1/4] 构建 DSQQ（Release, self-contained, 单文件）…")
     cmd = [
         "dotnet", "publish", str(DSQQ_ROOT / "DSQQ" / "DSQQ.csproj"),
@@ -302,15 +425,27 @@ def make_zip(source_dir: Path, zip_path: Path) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="构建 DSQQ 便携发行包")
+    parser.add_argument("--local-snowluma", action="store_true",
+                        help="用本机已装的 SnowLuma，而不是从 GitHub 下载")
+    parser.add_argument("--snowluma-version", default=DEFAULT_SNOWLUMA_VERSION,
+                        help=f"要下载的 SnowLuma 版本（默认 {DEFAULT_SNOWLUMA_VERSION}）")
+    parser.add_argument("--dsqq-from", type=Path, default=None,
+                        help="复用这个目录里已发布的 DSQQ，而不是重新 publish（CI 用，省一次 170 MB 的发布）")
+    args = parser.parse_args()
+
     version = read_version()
     name = f"DSQQ-Portable-{version}"
     target = DIST / name
 
     print(f"构建 {name}")
-    print(f"  DSQQ      : {DSQQ_ROOT}")
-    print(f"  SnowLuma  : {SNOWLUMA_SRC}")
+    print(f"  DSQQ      : {DSQQ_ROOT / 'DSQQ'}")
     print(f"  qq-bridge : {BRIDGE_SRC}")
     print()
+
+    if not BRIDGE_SRC.is_dir():
+        sys.exit(f"找不到 qq-bridge 源码：{BRIDGE_SRC}\n"
+                 f"它应当已并入本仓库；若是全新检出，确认 qq-bridge/ 目录在。")
 
     if target.exists():
         print("  清理旧的输出…")
@@ -318,21 +453,20 @@ def main() -> None:
     DIST.mkdir(parents=True, exist_ok=True)
 
     # 1) DSQQ 本体
-    publish_dsqq(target)
+    publish_dsqq(target, args.dsqq_from)
 
-    # 2) SnowLuma（排除用户数据）
-    print("  [2/4] 复制 SnowLuma …")
+    # 2) SnowLuma（下载或本机，再排除用户数据）
+    print("  [2/4] 准备 SnowLuma …")
+    snowluma_src = resolve_snowluma(args.snowluma_version, args.local_snowluma)
     sl_dst = target / "services" / "snowluma"
-    sl_count, sl_bytes = copy_tree(SNOWLUMA_SRC, sl_dst, SNOWLUMA_EXCLUDE_DIRS, SNOWLUMA_EXCLUDE_FILES)
+    sl_count, sl_bytes = copy_tree(snowluma_src, sl_dst, SNOWLUMA_EXCLUDE_DIRS, SNOWLUMA_EXCLUDE_FILES)
     print(f"        {sl_count} 个文件，{sl_bytes / 1048576:.1f} MB")
 
-    # 3) qq-bridge：复制源码，依赖现场安装
-    #    node_modules 不走复制 —— 见 install_bridge_deps 里的说明。
+    # 3) qq-bridge：复制仓库源码，依赖现场安装
     print("  [3/4] 复制 qq-bridge 源码 …")
-    node, pnpm = find_node_and_pnpm()
+    node, pnpm = find_node_and_pnpm(sl_dst)
     br_dst = target / "services" / "qq-bridge"
-    src_exclude = BRIDGE_EXCLUDE_DIRS | {"node_modules"}
-    br_count, br_bytes = copy_tree(BRIDGE_SRC, br_dst, src_exclude, BRIDGE_EXCLUDE_FILES)
+    br_count, br_bytes = copy_tree(BRIDGE_SRC, br_dst, BRIDGE_EXCLUDE_DIRS, BRIDGE_EXCLUDE_FILES)
     print(f"        {br_count} 个文件，{br_bytes / 1048576:.1f} MB")
     install_bridge_deps(br_dst, node, pnpm)
 
@@ -353,8 +487,7 @@ def main() -> None:
     leaks = []
     for pattern in ("services/snowluma/config", "services/snowluma/data", "services/snowluma/logs",
                     "services/qq-bridge/state", "services/qq-bridge/config.json"):
-        hit = target / pattern
-        if hit.exists():
+        if (target / pattern).exists():
             leaks.append(pattern)
 
     if leaks:

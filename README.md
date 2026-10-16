@@ -6,14 +6,48 @@
 
 **不内嵌任何网页** —— 界面完全用 WPF 重写，数据直接来自两侧的 HTTP API 与本地日志文件。
 
+---
+
+## 想直接用？下载便携包
+
+到 [Releases](https://github.com/LCMasterSpark/DSQQ/releases) 下载
+**`DSQQ-Portable-<版本>.zip`**，解压后双击 `首次运行.bat`。
+
+这一个包里已经有 DSQQ、SnowLuma、qq-bridge 三样东西，并且按
+`services/` 布局摆好 —— DSQQ 会自己找到它们，**不需要你填任何路径**。
+
+| 你需要的 | 从哪来 |
+| --- | --- |
+| QQ 客户端 | 自己装（腾讯的软件，无法打包） |
+| DSH（DeepSeek Harness） | 自己装，假设你已有 —— 它是 AI 能力的来源 |
+| 其他一切 | **就在这个压缩包里** |
+
+首次运行只有两件事必须你本人做（程序无法代劳）：
+
+1. 在 SnowLuma 控制台**同意用户协议并扫码登录 QQ**（只需一次）
+2. 回 DSQQ 勾选要启用的群
+
+其余（OneBot 端口、管理员、白名单、WebUI 会话）都由「一键配置」自动完成，
+界面上的「体检」卡片会逐条告诉你现在缺什么、下一步做什么。
+
+> 包里 **不含** 你的 QQ 号、访问令牌与聊天记录 —— 打包脚本有自检，
+> 命中任一项就直接失败退出。详见 `packaging/build-portable.py`。
+
+### 其它两个包
+
+| 包 | 适用 |
+| --- | --- |
+| `*-self-contained.zip` | 只要 DSQQ 本体（不含 SnowLuma / qq-bridge），免装 .NET 运行时 |
+| `*-framework-dependent.zip` | 同上，体积小，但需先装 [.NET 10 桌面运行时](https://dotnet.microsoft.com/download/dotnet/10.0) |
+
 ## 环境要求
 
 | 组件 | 版本 | 说明 |
 | --- | --- | --- |
 | .NET SDK | 10.0+ | 目标框架 `net10.0-windows`；运行时需 .NET 10 桌面运行时 |
 | 操作系统 | Windows 10 / 11 | 依赖 DPAPI（凭据加密）与系统托盘 |
-| SnowLuma | 1.14.x | 可选；未安装时相关页面显示离线 |
-| qq-bridge | 0.2.x | 可选；未运行时桥接控制台页不可用 |
+| SnowLuma | 1.14.x | 便携包自带；自行构建时可选，未安装则相关页面显示离线 |
+| qq-bridge | 0.2.x | **已并入本仓库**（`qq-bridge/`，MIT） |
 | DSH | 0.2.0-rc.2 | 可选；用于端口探测与模型设置 |
 
 ## 构建与运行
@@ -27,6 +61,22 @@ dotnet run   --project DSQQ
 或用 Visual Studio 打开 `DSQQ.slnx` 直接 F5。
 
 > 注意：项目目标是 `net10.0-windows` 且使用 WPF，**只能在 Windows 上构建**。
+
+## 自己构建便携包
+
+```powershell
+# 用本机已装的 SnowLuma（快；推荐本地开发时用）
+python packaging/build-portable.py --local-snowluma
+
+# 从 SnowLuma 的 GitHub Release 下载（CI 走这条）
+python packaging/build-portable.py
+```
+
+产出 `packaging/dist/DSQQ-Portable-<版本>.zip`。
+
+> **为什么本地要用 `--local-snowluma`**：实测到 GitHub Release 的 HEAD 请求 2 秒就返回，
+> 但大文件下载被严重限速 —— 36 MB 的包 15 分钟只下到 3 MB。
+> 下载路径留给 CI：在 GitHub 自己的基础设施上取自己的 Release 没有这个问题。
 
 ## 拉下来怎么用
 
