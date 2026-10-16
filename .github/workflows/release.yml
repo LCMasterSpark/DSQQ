@@ -155,23 +155,6 @@ jobs:
             "``````text" | Out-File -Append $env:GITHUB_STEP_SUMMARY
             Get-Content $log -Tail 80 | Out-File -Append $env:GITHUB_STEP_SUMMARY
             "``````" | Out-File -Append $env:GITHUB_STEP_SUMMARY
-
-            # 临时诊断通道：job logs 接口需要 admin 权限，本地拿不到输出，
-            # 而"靠猜"每轮要烧一次完整的 CI 往返。把日志推到一个专门的分支，
-            # 之后用普通 git 就能读。定位完成后这一段应当删掉。
-            try {
-              git config user.email 'ci@diagnostics.local'
-              git config user.name 'ci diagnostics'
-              git checkout -b ci-diagnostics
-              Copy-Item $log 'ci-portable-build.log' -Force
-              git add -f ci-portable-build.log
-              git commit -m "ci: portable build log (temp diagnostics)"
-              git push --force origin ci-diagnostics
-              Write-Host '诊断日志已推送到 ci-diagnostics 分支'
-            } catch {
-              Write-Host "诊断日志推送失败：$_"
-            }
-
             exit $code
           }
 
