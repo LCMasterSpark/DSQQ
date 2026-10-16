@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using DSQQ.Models;
 
@@ -51,6 +52,10 @@ public sealed class SnowLumaApiClient : IDisposable
 
     // 当前会话 token；未登录时为 null。
     private string? _token;
+
+    // 最近一次请求失败的原因，给人看的。每次请求开始时清空。
+    // 视图层靠它说明"为什么读不到"，而不是只留一个空白让人猜。
+    public string? LastError { get; private set; }
 
     // 初始化客户端。
     // 参数 baseUri：WebUI 基地址，例如 http://127.0.0.1:5099。
@@ -306,11 +311,34 @@ public sealed class SnowLumaApiClient : IDisposable
         string channelId, CancellationToken cancellationToken = default)
         => PostJsonAsync<SnowLumaApiResult>("/api/notifications/test", new { channelId }, cancellationToken);
 
+    // ── 调试面板（OneBot action 直调）──
+
+    // 读取全部可调用的 action 及其参数声明。实测 198 个 action、约 180 KB。
+    public Task<DebugActionList?> GetDebugActionsAsync(CancellationToken cancellationToken = default)
+        => GetAsync<DebugActionList>("/api/debug/actions", cancellationToken);
+
+    // 调用一个 action。
+    // uin 必填：漏了服务端直接 400「无效的账号」，不是 404 也不是 500。
+    // 成败看返回里的 status，不看 HTTP 状态码 —— 未知 action 同样是 HTTP 200。
+    public Task<DebugInvokeResult?> InvokeDebugAsync(
+        string uin, string action, JsonObject? parameters, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uin);
+        ArgumentException.ThrowIfNullOrWhiteSpace(action);
+
+        return PostJsonAsync<DebugInvokeResult>(
+            "/api/debug/invoke",
+            new { uin, action, @params = parameters ?? new JsonObject() },
+            cancellationToken);
+    }
+
     // 提交一个 JSON 请求体并把响应解析成 T。
     private async Task<T?> PostJsonAsync<T>(
         string path, object payload, CancellationToken cancellationToken)
         where T : class
     {
+        LastError = null;
+
         try
         {
             using var response = await _http
@@ -327,10 +355,20 @@ public sealed class SnowLumaApiClient : IDisposable
 
             // 即使状态码不是 2xx 也尝试解析 —— 服务端把失败原因放在 message 里，
             // 丢掉它用户就只能看到"失败了"。
-            return SafeDeserialize<T>(body);
+            var parsed = SafeDeserialize<T>(body);
+            if (parsed is null)
+            {
+                // 连响应体都解析不出来时才轮到状态码说话
+                LastError = string.IsNullOrWhiteSpace(body)
+                    ? DescribeStatus(path, response.StatusCode) + "，响应体是空的。"
+                    : $"{path} 的响应看不懂（结构可能和这一版对不上）。";
+            }
+
+            return parsed;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
         {
+            LastError = DescribeTransportError(path, ex);
             return null;
         }
     }
@@ -484,22 +522,48 @@ public sealed class SnowLumaApiClient : IDisposable
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)
         where T : class
     {
+        LastError = null;
+
         try
         {
             using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
+                LastError = DescribeStatus(path, response.StatusCode);
                 return null;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            return SafeDeserialize<T>(json);
+            var parsed = SafeDeserialize<T>(json);
+            if (parsed is null && !string.IsNullOrWhiteSpace(json))
+            {
+                LastError = $"{path} 的响应看不懂（结构可能和这一版对不上）。";
+            }
+
+            return parsed;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
         {
+            LastError = DescribeTransportError(path, ex);
             return null;
         }
     }
+
+    // 401 单列出来 —— 它几乎总是"会话过期"，值得直接说而不是让人对着状态码猜。
+    private static string DescribeStatus(string path, HttpStatusCode status) => status switch
+    {
+        HttpStatusCode.Unauthorized => $"{path} 返回 401：会话已失效，重新登录一次。",
+        HttpStatusCode.NotFound => $"{path} 返回 404：这一版 SnowLuma 可能没有这个端点。",
+        _ => $"{path} 返回 HTTP {(int)status}",
+    };
+
+    private string DescribeTransportError(string path, Exception ex) => ex switch
+    {
+        TaskCanceledException or OperationCanceledException =>
+            $"{path} 请求超时（{_http.Timeout.TotalSeconds:0} 秒内没有响应）。",
+        HttpRequestException http => $"{path} 连不上 SnowLuma：{http.Message}",
+        _ => $"{path} 请求失败：{ex.Message}",
+    };
 
     private static T? SafeDeserialize<T>(string json)
         where T : class

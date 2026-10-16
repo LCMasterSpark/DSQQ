@@ -9,16 +9,21 @@ using PasswordBox = System.Windows.Controls.PasswordBox;
 using TextBlock = System.Windows.Controls.TextBlock;
 using DataGrid = System.Windows.Controls.DataGrid;
 using Button = System.Windows.Controls.Button;
+using Controls = System.Windows.Controls;
 using Timer = System.Timers.Timer;
 
 namespace DSQQ.Views;
 
 // SnowLuma 控制台。
 //
-// 目标：日常不必再打开 SnowLuma 的网页。分三个分页 ——
-//   概览       版本、账号、WebUI 登录态、接入点连接情况
-//   QQ 账号    进程与注入状态、加载/卸载/重新探测
+// 目标：日常不必再打开 SnowLuma 的网页。分页 ——
+//   概览        版本、账号、WebUI 登录态、接入点连接情况
+//   QQ 账号     进程与注入状态、加载/卸载/重新探测
 //   OneBot 配置 HTTP / WS 服务的读取与写入
+//   日志        运行日志与日志级别
+//   系统        运行环境、存储占用、更新检查
+//   安全与通知  改密码、两步验证、通知渠道
+//   调试面板    直接调 OneBot 动作（198 个，含 118 个会改数据的）
 //
 // 不做的事：协议同意与 QQ 扫码。那是 QQ 客户端的登录流程，
 // 本程序只能把你送到 SnowLuma 界面，不能代做。
@@ -615,6 +620,369 @@ public partial class SnowLumaView : UserControl
             case "安全与通知":
                 await LoadSecurityAsync();
                 break;
+
+            case "调试面板":
+                await LoadDebugAsync();
+                break;
+        }
+    }
+
+    // ── 调试面板 ──
+
+    // 调试面板里一行可能要等接口返回才填得上，所以拉清单和拉账号分开做。
+    private List<DebugAction> _debugActions = [];
+    private readonly List<(DebugParam Param, Controls.Control Editor)> _debugEditors = [];
+    private DebugAction? _debugCurrent;
+    private bool _debugLoaded;
+    private bool _suppressDebugEvents;
+
+    // 分类下拉里的一项。Name 为 null 表示"全部"
+    private sealed record CategoryFilter(string? Name, string Display);
+
+    // 下拉里表示"这个参数不传"
+    private const string DebugNotSent = "（不传）";
+
+    private async Task LoadDebugAsync()
+    {
+        if (!_debugLoaded)
+        {
+            await LoadDebugActionsAsync();
+        }
+
+        await LoadDebugAccountsAsync();
+    }
+
+    private async Task LoadDebugActionsAsync()
+    {
+        var client = CreateClient();
+        if (!client.HasSession)
+        {
+            DebugCountText.Text = "还没登录 SnowLuma —— 先在上面登录，再回到这一页。";
+            return;
+        }
+
+        DebugCountText.Text = "正在拉取动作清单…";
+
+        var list = await client.GetDebugActionsAsync();
+        if (list?.Actions is not { Count: > 0 })
+        {
+            DebugCountText.Text = "拉不到动作清单：" + (client.LastError ?? "响应里没有 actions");
+            return;
+        }
+
+        _debugActions = list.Actions;
+        _debugLoaded = true;
+
+        var filters = new List<CategoryFilter> { new(null, $"全部　{_debugActions.Count} 个") };
+        foreach (var category in list.Categories ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(category.Category))
+            {
+                filters.Add(new CategoryFilter(category.Category, category.Display));
+            }
+        }
+
+        _suppressDebugEvents = true;
+        try
+        {
+            DebugCategoryCombo.ItemsSource = filters;
+            DebugCategoryCombo.SelectedIndex = 0;
+        }
+        finally
+        {
+            _suppressDebugEvents = false;
+        }
+
+        ApplyDebugFilter();
+    }
+
+    private async Task LoadDebugAccountsAsync()
+    {
+        var client = CreateClient();
+        if (!client.HasSession)
+        {
+            return;
+        }
+
+        var accounts = await client.GetQqListAsync();
+        if (accounts.Count == 0)
+        {
+            if (DebugUinCombo.Items.Count == 0)
+            {
+                DebugHintText.Text = "读不到已登录的 QQ 账号 —— 接口要求请求体里带 uin，少了会直接 400「无效的账号」。";
+            }
+
+            return;
+        }
+
+        var previous = (DebugUinCombo.SelectedItem as SnowLumaAccount)?.Uin;
+
+        _suppressDebugEvents = true;
+        try
+        {
+            DebugUinCombo.ItemsSource = accounts;
+            DebugUinCombo.SelectedIndex = Math.Max(0, accounts.ToList().FindIndex(a => a.Uin == previous));
+        }
+        finally
+        {
+            _suppressDebugEvents = false;
+        }
+    }
+
+    private void ApplyDebugFilter()
+    {
+        var filter = DebugCategoryCombo.SelectedItem as CategoryFilter;
+        var keyword = DebugSearchBox.Text?.Trim().ToLowerInvariant() ?? string.Empty;
+
+        var shown = _debugActions
+            .Where(a => (filter?.Name is null || string.Equals(a.Category, filter.Name, StringComparison.Ordinal))
+                        && (keyword.Length == 0 || a.SearchText.Contains(keyword, StringComparison.Ordinal)))
+            .ToList();
+
+        // 改 ItemsSource 会让选中项丢掉，进而触发 SelectionChanged 把右侧正在填的表单清空。
+        // 过滤只是换个看法，不该把用户填了一半的参数抹掉。
+        _suppressDebugEvents = true;
+        try
+        {
+            DebugActionList.ItemsSource = shown;
+        }
+        finally
+        {
+            _suppressDebugEvents = false;
+        }
+
+        DebugCountText.Text = $"共 {_debugActions.Count} 个，当前显示 {shown.Count} 个";
+    }
+
+    private void ShowDebugAction(DebugAction action)
+    {
+        _debugCurrent = action;
+
+        DebugDetailText.Text = action.DetailText;
+        DebugInvokeButton.IsEnabled = true;
+        DebugInvokeButton.Content = action.IsWrite ? "调用（会改数据）" : "调用";
+        DebugResultSummary.Text = "—";
+        DebugResultBox.Text = string.Empty;
+        DebugHintText.Text = action.IsWrite ? "⚠ 这个动作会改数据，填错就直接生效了，没有撤销。" : string.Empty;
+
+        DebugParamPanel.Children.Clear();
+        _debugEditors.Clear();
+
+        var parameters = action.ParamList;
+        DebugParamsHeader.Text = parameters.Count == 0
+            ? "参数：这个动作不需要参数，直接点「调用」。"
+            : $"参数（{parameters.Count} 个，必填 {action.RequiredCount} 个）";
+
+        foreach (var parameter in parameters)
+        {
+            DebugParamPanel.Children.Add(BuildDebugParamRow(parameter));
+        }
+    }
+
+    // 一个参数一格：上面一行说明（类型、范围、枚举取值、服务端 desc），下面一个编辑控件。
+    // 控件类型由 DebugParam.Editor 决定 —— bool 和 enum 用下拉，因为"不传"和"传空"是两回事。
+    private FrameworkElement BuildDebugParamRow(DebugParam parameter)
+    {
+        var row = new Controls.StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+
+        row.Children.Add(new TextBlock
+        {
+            Text = $"{parameter.Label}　（{parameter.Hint}）",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.8,
+        });
+
+        Controls.Control editor;
+
+        switch (parameter.Editor)
+        {
+            case DebugEditor.Bool:
+            case DebugEditor.Enum:
+            {
+                var combo = new Controls.ComboBox
+                {
+                    Height = 26,
+                    MinWidth = 200,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                };
+
+                combo.Items.Add(DebugNotSent);
+                if (parameter.Editor == DebugEditor.Bool)
+                {
+                    combo.Items.Add("true");
+                    combo.Items.Add("false");
+                }
+                else
+                {
+                    foreach (var option in parameter.Options)
+                    {
+                        combo.Items.Add(option);
+                    }
+                }
+
+                combo.SelectedIndex = 0;
+                editor = combo;
+                break;
+            }
+
+            case DebugEditor.MultiLine:
+            {
+                editor = new Controls.TextBox
+                {
+                    AcceptsReturn = true,
+                    TextWrapping = TextWrapping.Wrap,
+                    MinHeight = 54,
+                    MaxHeight = 110,
+                    VerticalScrollBarVisibility = Controls.ScrollBarVisibility.Auto,
+                    FontFamily = new System.Windows.Media.FontFamily("Consolas, Microsoft YaHei UI"),
+                };
+                break;
+            }
+
+            default:
+            {
+                editor = new Controls.TextBox { Height = 26 };
+                break;
+            }
+        }
+
+        editor.Margin = new Thickness(0, 4, 0, 0);
+        row.Children.Add(editor);
+        _debugEditors.Add((parameter, editor));
+
+        return row;
+    }
+
+    // 下拉的第一项是"（不传）"，所以索引 0 表示不提交这个参数
+    private static string ReadDebugEditor(Controls.Control editor) => editor switch
+    {
+        Controls.ComboBox combo => combo.SelectedIndex <= 0 ? string.Empty : combo.SelectedItem as string ?? string.Empty,
+        Controls.TextBox box => box.Text,
+        _ => string.Empty,
+    };
+
+    private void OnDebugCategoryChanged(object sender, Controls.SelectionChangedEventArgs e)
+    {
+        if (_suppressDebugEvents || !IsLoaded)
+        {
+            return;
+        }
+
+        ApplyDebugFilter();
+    }
+
+    private void OnDebugSearchChanged(object sender, Controls.TextChangedEventArgs e)
+    {
+        if (_suppressDebugEvents || !IsLoaded)
+        {
+            return;
+        }
+
+        ApplyDebugFilter();
+    }
+
+    private void OnDebugActionChanged(object sender, Controls.SelectionChangedEventArgs e)
+    {
+        if (_suppressDebugEvents || !IsLoaded)
+        {
+            return;
+        }
+
+        if (DebugActionList.SelectedItem is DebugAction action)
+        {
+            ShowDebugAction(action);
+        }
+    }
+
+    private async void OnDebugReloadClick(object sender, RoutedEventArgs e)
+    {
+        _debugLoaded = false;
+        DebugResultSummary.Text = "—";
+        DebugResultBox.Text = string.Empty;
+        await LoadDebugActionsAsync();
+    }
+
+    private void OnDebugClearParamsClick(object sender, RoutedEventArgs e)
+    {
+        foreach (var (_, editor) in _debugEditors)
+        {
+            switch (editor)
+            {
+                case Controls.ComboBox combo:
+                    combo.SelectedIndex = 0;
+                    break;
+                case Controls.TextBox box:
+                    box.Text = string.Empty;
+                    break;
+            }
+        }
+
+        DebugHintText.Text = "参数已清空。";
+    }
+
+    private async void OnDebugInvokeClick(object sender, RoutedEventArgs e)
+    {
+        if (_debugCurrent is not { } action)
+        {
+            return;
+        }
+
+        var uin = (DebugUinCombo.SelectedItem as SnowLumaAccount)?.Uin;
+        if (string.IsNullOrWhiteSpace(uin))
+        {
+            DebugHintText.Text = "先选一个账号 —— 接口要求请求体里带 uin，少了会直接 400「无效的账号」。";
+            return;
+        }
+
+        var inputs = _debugEditors.Select(x => new DebugParamInput(x.Param, ReadDebugEditor(x.Editor))).ToList();
+        var built = DebugParamCodec.Build(inputs);
+        if (!built.Ok)
+        {
+            DebugHintText.Text = "参数有问题，没有发出去：" + Environment.NewLine + built.Error;
+            return;
+        }
+
+        // 会改数据的动作先问一句。踢人、退群、改名片都在这 118 个里面。
+        if (action.IsWrite && DebugConfirmCheck.IsChecked == true)
+        {
+            var answer = System.Windows.MessageBox.Show(
+                $"「{action.Name}」会改数据，确定调用吗？{Environment.NewLine}{Environment.NewLine}"
+                + $"{action.Summary}{Environment.NewLine}{Environment.NewLine}"
+                + $"将要提交的参数：{built.Body!.ToJsonString()}",
+                "确认调用",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning);
+
+            if (answer != MessageBoxResult.OK)
+            {
+                DebugHintText.Text = "已取消，没有发出请求。";
+                return;
+            }
+        }
+
+        DebugInvokeButton.IsEnabled = false;
+        DebugHintText.Text = "调用中…";
+
+        try
+        {
+            var client = CreateClient();
+            var result = await client.InvokeDebugAsync(uin, action.Name!, built.Body);
+
+            if (result is null)
+            {
+                DebugResultSummary.Text = "✗ 没拿到响应";
+                DebugResultBox.Text = client.LastError ?? "网络层失败，且没有更多信息。";
+                DebugHintText.Text = string.Empty;
+                return;
+            }
+
+            DebugResultSummary.Text = result.Summary;
+            DebugResultBox.Text = result.DataText;
+            DebugHintText.Text = result.Ok ? "（调用完成）" : "（调用失败 —— 原因见上面的返回内容）";
+        }
+        finally
+        {
+            DebugInvokeButton.IsEnabled = true;
         }
     }
 

@@ -36,6 +36,9 @@ public sealed class SnowLumaAccount
     // 昵称。
     [JsonPropertyName("nickname")]
     public string? Nickname { get; set; }
+
+    // 下拉框里显示的一行。
+    public string Display => string.IsNullOrWhiteSpace(Nickname) ? Uin ?? string.Empty : $"{Nickname}（{Uin}）";
 }
 
 // QQ 进程与原生注入状态（/api/processes）。

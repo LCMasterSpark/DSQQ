@@ -384,6 +384,107 @@
                 </Grid>
             </TabItem>
 
+            <!-- ── 调试面板 ── -->
+            <!-- 行布局：0 工具条 / 1 主体（左列表 + 右详情）。右侧内部行：
+                 0 动作抬头 / 1 参数区（可滚，限高）/ 2 调用按钮 / 3 提示 / 4 返回区（摘要 + 正文） -->
+            <TabItem Header="调试面板">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <WrapPanel>
+                            <TextBlock Text="分类" VerticalAlignment="Center" />
+                            <ComboBox x:Name="DebugCategoryCombo" Width="150" Height="26" Margin="6,0,0,0"
+                                      DisplayMemberPath="Display"
+                                      SelectionChanged="OnDebugCategoryChanged" />
+                            <TextBlock Text="搜索" VerticalAlignment="Center" Margin="14,0,0,0" />
+                            <TextBox x:Name="DebugSearchBox" Width="200" Height="26" Margin="6,0,0,0"
+                                     TextChanged="OnDebugSearchChanged" />
+                            <Button x:Name="DebugReloadButton" Content="重新拉清单" Width="110" Height="26" Margin="10,0,0,0"
+                                    Click="OnDebugReloadClick" />
+                            <TextBlock x:Name="DebugCountText" VerticalAlignment="Center" Margin="12,0,0,0" Opacity="0.8"
+                                       Text="尚未拉取。" />
+                        </WrapPanel>
+
+                        <WrapPanel Margin="0,8,0,0">
+                            <TextBlock Text="账号" VerticalAlignment="Center" />
+                            <ComboBox x:Name="DebugUinCombo" Width="170" Height="26" Margin="6,0,0,0"
+                                      DisplayMemberPath="Display" />
+                            <CheckBox x:Name="DebugConfirmCheck" Content="调用会改数据的动作前先确认" IsChecked="True"
+                                      VerticalAlignment="Center" Margin="16,0,0,0"
+                                      ToolTip="默认开着。关掉之后就点一下直接发出去，适合连着试参数的时候。" />
+                        </WrapPanel>
+
+                        <TextBlock Margin="0,8,0,0" Opacity="0.6" TextWrapping="Wrap"
+                                   Text="这里直接调 SnowLuma 转发的 OneBot 动作（实测 198 个）。带 ⚠ 的会改数据 —— 踢人、退群、改名片都在里面，别在没看清参数时点「调用」。成败看返回里的 status：未知动作也是 HTTP 200，状态码说明不了任何事。" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="430" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <ListBox Grid.Column="0" x:Name="DebugActionList"
+                                 DisplayMemberPath="Display"
+                                 SelectionChanged="OnDebugActionChanged"
+                                 FontFamily="Consolas, Microsoft YaHei UI"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+                        <Grid Grid.Column="1" Margin="14,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" x:Name="DebugDetailText" TextWrapping="Wrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI" LineHeight="19"
+                                       Text="先在左边选一个动作。" />
+
+                            <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                                <TextBlock x:Name="DebugParamsHeader" Text="参数" FontWeight="SemiBold" />
+                                <ScrollViewer MaxHeight="230" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                                    <StackPanel x:Name="DebugParamPanel" />
+                                </ScrollViewer>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="DebugInvokeButton" Content="调用" Width="130" Height="28"
+                                        Click="OnDebugInvokeClick" IsEnabled="False" />
+                                <Button x:Name="DebugClearParamsButton" Content="清空参数" Width="90" Height="28"
+                                        Margin="8,0,0,0" Click="OnDebugClearParamsClick" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="3" x:Name="DebugHintText" Margin="0,8,0,0" TextWrapping="Wrap" />
+
+                            <Grid Grid.Row="4" Margin="0,8,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" x:Name="DebugResultSummary" Text="—" FontWeight="SemiBold"
+                                           TextWrapping="Wrap" />
+
+                                <TextBox Grid.Row="1" x:Name="DebugResultBox" Margin="0,6,0,0"
+                                         IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                                         IsReadOnlyCaretVisible="True"
+                                         FontFamily="Consolas, Microsoft YaHei UI"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         ToolTip="可以直接选中复制" />
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
         <TextBlock Grid.Row="2" x:Name="HintText" Margin="2,10,0,0" Opacity="0.55"
