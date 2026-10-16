@@ -570,4 +570,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # 兜底打印完整 traceback。
+    # sys.exit("...") 只给一行消息，而 CI 上那一行常常不足以定位；
+    # 未预期的异常更应该带上栈 —— 反正打出来不影响正常路径。
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:  # noqa: BLE001 - 顶层兜底，就是要抓全部
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
