@@ -536,6 +536,187 @@ public sealed class SnowLumaApiClientTests
         Assert.False(await client.CleanupStorageAsync());
     }
 
+    // ── 安全与通知 ──
+
+    [Fact]
+    public async Task 登录状态应解析出必须改密码标志()
+    {
+        using var server = new StubServer
+        {
+            Routes = { ["/api/auth/state"] = """{"mustChangePassword":true}""" },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var state = await client.GetAuthStateAsync();
+
+        Assert.NotNull(state);
+        Assert.True(state!.MustChangePassword);
+    }
+
+    [Fact]
+    public async Task 两步验证状态应解析()
+    {
+        using var server = new StubServer
+        {
+            Routes = { ["/api/auth/totp"] = """{"enabled":true}""" },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        Assert.True((await client.GetTotpStateAsync())!.Enabled);
+    }
+
+    [Fact]
+    public async Task 密码强度应逐条返回并拼成可读行()
+    {
+        using var server = new StubServer
+        {
+            Routes =
+            {
+                ["/api/auth/check-strength"] = """{"rules":[{"id":"length","label":"长度不少于 10 位","ok":false},{"id":"lower","label":"包含小写字母","ok":true}],"valid":false}""",
+            },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var result = await client.CheckPasswordStrengthAsync("abc");
+
+        Assert.NotNull(result);
+        Assert.False(result!.Valid);
+        Assert.Equal(2, result.Rules.Count);
+        // 界面直接展示 Display：通过的打勾、没通过的打叉。
+        Assert.Contains("✗ 长度不少于 10 位", result.Display, StringComparison.Ordinal);
+        Assert.Contains("✓ 包含小写字母", result.Display, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 改密码应提交_oldPassword_与_newPassword()
+    {
+        // 字段名以服务端实现为准（auth.verify(body.oldPassword) 等）——
+        // 写错一个名字会得到"当前密码不正确"，很难看出是字段名的问题。
+        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var result = await client.ChangePasswordAsync("old-pw", "NewPw#123456");
+
+        Assert.True(result?.Success);
+        Assert.Contains("oldPassword", server.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("newPassword", server.LastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 确认两步验证应提交_code_与_password()
+    {
+        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        await client.ConfirmTotpAsync("123456", "pw");
+
+        Assert.Contains("\"code\"", server.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"password\"", server.LastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 关闭两步验证应提交_password_与_totp()
+    {
+        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        await client.DisableTotpAsync("pw", "654321");
+
+        Assert.Contains("\"password\"", server.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"totp\"", server.LastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 通知配置应穿过_config_包装并保留渠道数()
+    {
+        using var server = new StubServer
+        {
+            Routes =
+            {
+                ["/api/notifications/config"] = """{"config":{"version":1,"debounceSeconds":30,"channels":[{"type":"webhook","url":"https://example.invalid"}]}}""",
+            },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var config = await client.GetNotificationsConfigAsync();
+
+        Assert.NotNull(config);
+        Assert.Equal(30, config!.DebounceSeconds);
+        Assert.Single(config.Channels);
+    }
+
+    [Fact]
+    public async Task 保存通知配置时必须原样带回渠道()
+    {
+        // channels 的结构没建模（随渠道类型而变）。POST 是整体覆盖语义，
+        // 回写时若把它们丢了，用户的推送渠道会被静默清空。
+        using var server = new StubServer
+        {
+            Routes =
+            {
+                ["/api/notifications/config"] = """{"config":{"version":1,"debounceSeconds":30,"channels":[{"type":"webhook","url":"https://example.invalid"}]}}""",
+            },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var config = await client.GetNotificationsConfigAsync();
+        config!.DebounceSeconds = 60;
+
+        // 读与写打同一个路径，所以这里先把桩的响应换成写回执。
+        using var writeServer = new StubServer { ResponseBody = """{"success":true}""" };
+        using var writeClient = new SnowLumaApiClient(writeServer.BaseUri);
+        await writeClient.SaveNotificationsConfigAsync(config);
+
+        var body = writeServer.LastRequestBody;
+        Assert.Contains("channels", body, StringComparison.Ordinal);
+        Assert.Contains("example.invalid", body, StringComparison.Ordinal);
+        Assert.Contains("60", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 最近通知应保留原始文本()
+    {
+        using var server = new StubServer
+        {
+            Routes = { ["/api/notifications/recent"] = """{"recent":[{"time":"2026-10-16T11:00:00Z","level":"warn","title":"注入退化"}]}""" },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var recent = await client.GetRecentNotificationsAsync();
+
+        var item = Assert.Single(recent);
+        Assert.Contains("注入退化", item, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 发测试通知应提交_channelId()
+    {
+        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        await client.TestNotificationAsync("chan-1");
+
+        Assert.Contains("channelId", server.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("chan-1", server.LastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 失败回执里的_message_不应被丢掉()
+    {
+        // 服务端把失败原因放在 message 里。只看状态码会让用户永远只看到"失败了"。
+        using var server = new StubServer
+        {
+            StatusCode = 401,
+            ResponseBody = """{"success":false,"message":"当前密码不正确"}""",
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var result = await client.ChangePasswordAsync("wrong", "NewPw#123456");
+
+        Assert.False(result?.Success);
+        Assert.Equal("当前密码不正确", result!.Message);
+    }
+
     // ── 极简 HTTP 桩 ──
     //
     // 用 TcpListener 而不是 HttpListener：后者在 Windows 上需要 URL 预留（通常要管理员），

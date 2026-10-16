@@ -500,3 +500,93 @@ public sealed class SnowLumaUpdateInfo
     [JsonPropertyName("htmlUrl")]
     public string? HtmlUrl { get; set; }
 }
+
+
+// ── 安全与通知（/api/auth/*、/api/notifications/*）──
+
+// GET /api/auth/state
+public sealed class SnowLumaAuthState
+{
+    // 服务端要求先改密码（例如仍是初始/bootstrap 密码）。
+    [JsonPropertyName("mustChangePassword")]
+    public bool MustChangePassword { get; set; }
+}
+
+// GET /api/auth/totp
+public sealed class SnowLumaTotpState
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+}
+
+// POST /api/auth/check-strength 的一条规则。
+public sealed class SnowLumaStrengthRule
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
+
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+}
+
+// POST /api/auth/check-strength 的响应。
+public sealed class SnowLumaStrengthResult
+{
+    [JsonPropertyName("rules")]
+    public List<SnowLumaStrengthRule> Rules { get; set; } = [];
+
+    [JsonPropertyName("valid")]
+    public bool Valid { get; set; }
+
+    // 界面直接用：把规则拼成一行勾/叉。
+    public string Display => string.Join(
+        "  ",
+        Rules.Select(r => (r.Ok ? "✓ " : "✗ ") + (r.Label ?? r.Id ?? "?")));
+}
+
+// 多数写接口的统一回执：{success, message}。
+public sealed class SnowLumaApiResult
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+// GET /api/notifications/config
+public sealed class SnowLumaNotificationsConfig
+{
+    [JsonPropertyName("version")]
+    public int Version { get; set; }
+
+    // 同类通知的去抖窗口（秒）。
+    [JsonPropertyName("debounceSeconds")]
+    public int DebounceSeconds { get; set; }
+
+    // 渠道列表。具体结构随渠道类型而变，界面只数个数、不解释内容 ——
+    // 猜错字段名再去回写会直接把配置改坏，不值得。
+    [JsonPropertyName("channels")]
+    public List<JsonElement> Channels { get; set; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; set; }
+}
+
+// GET /api/notifications/config 的响应外壳。
+public sealed class SnowLumaNotificationsResponse
+{
+    [JsonPropertyName("config")]
+    public SnowLumaNotificationsConfig? Config { get; set; }
+}
+
+// GET /api/notifications/recent 的响应外壳。
+// 条目结构随渠道而变，因此保留原始 JSON 文本供展示，不做建模。
+public sealed class SnowLumaRecentNotifications
+{
+    [JsonPropertyName("recent")]
+    public List<JsonElement> Recent { get; set; } = [];
+}

@@ -211,6 +211,130 @@ public sealed class SnowLumaApiClient : IDisposable
         }
     }
 
+    // ── 安全与通知 ──
+
+    // 读取登录状态（是否被要求改密码）。
+    public Task<SnowLumaAuthState?> GetAuthStateAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SnowLumaAuthState>("/api/auth/state", cancellationToken);
+
+    // 读取两步验证状态。
+    public Task<SnowLumaTotpState?> GetTotpStateAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SnowLumaTotpState>("/api/auth/totp", cancellationToken);
+
+    // 检查密码强度。返回逐条规则的通过情况，界面可以实时给反馈 ——
+    // 比"提交后被拒绝"友好得多。
+    public Task<SnowLumaStrengthResult?> CheckPasswordStrengthAsync(
+        string password, CancellationToken cancellationToken = default)
+        => PostJsonAsync<SnowLumaStrengthResult>("/api/auth/check-strength", new { password }, cancellationToken);
+
+    // 修改 WebUI 密码。字段名以服务端实现为准：oldPassword / newPassword。
+    public Task<SnowLumaApiResult?> ChangePasswordAsync(
+        string oldPassword, string newPassword, CancellationToken cancellationToken = default)
+        => PostJsonAsync<SnowLumaApiResult>(
+            "/api/auth/change-password", new { oldPassword, newPassword }, cancellationToken);
+
+    // 开始启用两步验证。返回**原始 JSON 文本** ——
+    // 响应里含一次性密钥/otpauth URL，字段名随版本可能变，猜错不如原样展示给用户。
+    public async Task<string?> BeginTotpAsync(
+        string? accountName = null, string? issuer = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _http
+                .PostAsync(
+                    "/api/auth/totp/begin",
+                    new StringContent(
+                        JsonSerializer.Serialize(new { accountName, issuer }, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return response.IsSuccessStatusCode
+                ? await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false)
+                : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    // 确认启用两步验证（需要动态码与当前密码）。
+    public Task<SnowLumaApiResult?> ConfirmTotpAsync(
+        string code, string password, CancellationToken cancellationToken = default)
+        => PostJsonAsync<SnowLumaApiResult>("/api/auth/totp/confirm", new { code, password }, cancellationToken);
+
+    // 关闭两步验证（需要当前密码与一个有效动态码）。
+    public Task<SnowLumaApiResult?> DisableTotpAsync(
+        string password, string totp, CancellationToken cancellationToken = default)
+        => PostJsonAsync<SnowLumaApiResult>("/api/auth/totp/disable", new { password, totp }, cancellationToken);
+
+    // 读取通知配置。
+    public async Task<SnowLumaNotificationsConfig?> GetNotificationsConfigAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await GetAsync<SnowLumaNotificationsResponse>("/api/notifications/config", cancellationToken)
+            .ConfigureAwait(false);
+        return response?.Config;
+    }
+
+    // 保存通知配置。
+    // ⚠️ 整体覆盖语义：调用方必须先读出来、只改自己要改的字段再整体提交 ——
+    // channels 里是没建模的结构，回写时必须原样带上，否则渠道会被清空。
+    public Task<SnowLumaApiResult?> SaveNotificationsConfigAsync(
+        SnowLumaNotificationsConfig config, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        return PostJsonAsync<SnowLumaApiResult>("/api/notifications/config", config, cancellationToken);
+    }
+
+    // 读取最近的通知记录（条目结构随渠道而变，返回原始 JSON 文本）。
+    public async Task<IReadOnlyList<string>> GetRecentNotificationsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await GetAsync<SnowLumaRecentNotifications>("/api/notifications/recent", cancellationToken)
+            .ConfigureAwait(false);
+
+        return (response?.Recent ?? [])
+            .Select(e => e.GetRawText())
+            .ToList();
+    }
+
+    // 向指定渠道发一条测试通知。
+    public Task<SnowLumaApiResult?> TestNotificationAsync(
+        string channelId, CancellationToken cancellationToken = default)
+        => PostJsonAsync<SnowLumaApiResult>("/api/notifications/test", new { channelId }, cancellationToken);
+
+    // 提交一个 JSON 请求体并把响应解析成 T。
+    private async Task<T?> PostJsonAsync<T>(
+        string path, object payload, CancellationToken cancellationToken)
+        where T : class
+    {
+        try
+        {
+            using var response = await _http
+                .PostAsync(
+                    path,
+                    new StringContent(
+                        JsonSerializer.Serialize(payload, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            // 即使状态码不是 2xx 也尝试解析 —— 服务端把失败原因放在 message 里，
+            // 丢掉它用户就只能看到"失败了"。
+            return SafeDeserialize<T>(body);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
     // ── 系统与存储 ──
 
     // 读取系统信息（主机、CPU、内存、运行时长）。

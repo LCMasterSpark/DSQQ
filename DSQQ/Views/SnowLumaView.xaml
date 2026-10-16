@@ -305,6 +305,85 @@
                 </Grid>
             </TabItem>
 
+            <!-- ── 安全与通知 ── -->
+            <TabItem Header="安全与通知">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 改密码 -->
+                    <Border Grid.Row="0" Padding="12" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="修改 WebUI 密码" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="当前密码" VerticalAlignment="Center" Width="70" />
+                                <PasswordBox x:Name="OldPasswordBox" Width="180" />
+                                <TextBlock Text="新密码" Margin="14,0,0,0" VerticalAlignment="Center" />
+                                <PasswordBox x:Name="NewPasswordBox" Width="180" Margin="8,0,0,0"
+                                             PasswordChanged="OnNewPasswordChanged" />
+                                <Button x:Name="ChangePasswordButton" Content="修改" Width="90" Height="28"
+                                        Margin="14,0,0,0" Click="OnChangePasswordClick" />
+                            </StackPanel>
+                            <TextBlock x:Name="StrengthText" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.75"
+                                       FontFamily="Consolas, Microsoft YaHei UI" />
+                            <TextBlock x:Name="SecurityHintText" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 两步验证 -->
+                    <Border Grid.Row="1" Margin="0,12,0,0" Padding="12" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="两步验证（TOTP）" FontWeight="SemiBold" />
+                            <TextBlock x:Name="TotpStateText" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.8" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="TotpBeginButton" Content="开始启用" Width="100" Height="28"
+                                        Click="OnTotpBeginClick" />
+                                <TextBlock Text="动态码" Margin="14,0,0,0" VerticalAlignment="Center" />
+                                <TextBox x:Name="TotpCodeBox" Width="100" Margin="8,0,0,0" />
+                                <TextBlock Text="当前密码" Margin="14,0,0,0" VerticalAlignment="Center" />
+                                <PasswordBox x:Name="TotpPasswordBox" Width="160" Margin="8,0,0,0" />
+                                <Button x:Name="TotpConfirmButton" Content="确认启用" Width="100" Height="28"
+                                        Margin="14,0,0,0" Click="OnTotpConfirmClick" />
+                                <Button x:Name="TotpDisableButton" Content="关闭两步验证" Width="120" Height="28"
+                                        Margin="8,0,0,0" Click="OnTotpDisableClick" />
+                            </StackPanel>
+
+                            <TextBlock x:Name="TotpSecretText" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI" Opacity="0.8"
+                                       Visibility="Collapsed" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 通知 -->
+                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="12" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="通知" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="同类去抖（秒）" VerticalAlignment="Center" />
+                                <TextBox x:Name="DebounceBox" Width="80" Margin="8,0,0,0" />
+                                <Button x:Name="SaveNotificationsButton" Content="保存" Width="80" Height="28"
+                                        Margin="12,0,0,0" Click="OnSaveNotificationsClick" />
+                                <TextBlock x:Name="ChannelsText" Margin="14,0,0,0" VerticalAlignment="Center"
+                                           Opacity="0.75" />
+                            </StackPanel>
+                            <TextBlock x:Name="RecentNoticeText" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI" Opacity="0.75" />
+                            <TextBlock x:Name="NotificationHintText" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Grid.Row="3" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap"
+                               Text="改密码与两步验证只影响 SnowLuma 的 WebUI 登录。渠道（channels）的结构随类型而变，本页不编辑它 —— 猜错字段名再回写会把配置改坏。全部改动都需要重新登录该 WebUI 才生效。" />
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
         <TextBlock Grid.Row="2" x:Name="HintText" Margin="2,10,0,0" Opacity="0.55"

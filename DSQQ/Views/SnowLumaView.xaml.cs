@@ -606,9 +606,15 @@ public partial class SnowLumaView : UserControl
             return;
         }
 
-        if ((SnowLumaTabs.SelectedItem as System.Windows.Controls.TabItem)?.Header as string == "系统")
+        switch ((SnowLumaTabs.SelectedItem as System.Windows.Controls.TabItem)?.Header as string)
         {
-            await LoadSystemAsync();
+            case "系统":
+                await LoadSystemAsync();
+                break;
+
+            case "安全与通知":
+                await LoadSecurityAsync();
+                break;
         }
     }
 
@@ -797,6 +803,238 @@ public partial class SnowLumaView : UserControl
         return span.TotalHours >= 1
             ? $"{(int)span.TotalHours} 小时 {span.Minutes} 分"
             : $"{(int)span.TotalMinutes} 分 {span.Seconds} 秒";
+    }
+
+    // ── 安全与通知 ──
+
+    // 当前是否处于"开始启用 TOTP"之后、等确认的状态。
+    private bool _totpEnrolling;
+
+    private async Task LoadSecurityAsync()
+    {
+        var auth = await _client.GetAuthStateAsync();
+        var totp = await _client.GetTotpStateAsync();
+
+        // 当前密码预填保存的那份 —— 改密码时多半就是它，省一次输入。
+        if (string.IsNullOrEmpty(OldPasswordBox.Password))
+        {
+            var saved = SecureStore.Unprotect(_services.Config.SnowLuma.WebUiPasswordProtected);
+            if (!string.IsNullOrEmpty(saved))
+            {
+                OldPasswordBox.Password = saved;
+                TotpPasswordBox.Password = saved;
+            }
+        }
+
+        TotpStateText.Text = totp is null
+            ? (_client.HasSession ? "读不到两步验证状态。" : "未登录，读不到。")
+            : totp.Enabled ? "当前：已启用。" : "当前：未启用。";
+
+        TotpDisableButton.IsEnabled = totp?.Enabled == true;
+
+        if (auth?.MustChangePassword == true)
+        {
+            SecurityHintText.Text = "服务端要求先修改密码 —— 在它看来当前密码仍是初始密码。";
+        }
+
+        await LoadNotificationsAsync();
+    }
+
+    private async Task LoadNotificationsAsync()
+    {
+        var config = await _client.GetNotificationsConfigAsync();
+        if (config is null)
+        {
+            ChannelsText.Text = "（读不到通知配置）";
+            return;
+        }
+
+        if (!DebounceBox.IsFocused)
+        {
+            DebounceBox.Text = config.DebounceSeconds.ToString();
+        }
+
+        ChannelsText.Text = $"渠道：{config.Channels.Count} 个";
+
+        var recent = await _client.GetRecentNotificationsAsync();
+        RecentNoticeText.Text = recent.Count == 0
+            ? "最近通知：无"
+            : "最近通知：" + string.Join(Environment.NewLine, recent.Take(5));
+    }
+
+    // 新密码输入时实时给出强度反馈 —— 比提交后被拒友好。
+    private async void OnNewPasswordChanged(object sender, RoutedEventArgs e)
+    {
+        var password = NewPasswordBox.Password;
+
+        if (string.IsNullOrEmpty(password))
+        {
+            StrengthText.Text = string.Empty;
+            return;
+        }
+
+        var result = await _client.CheckPasswordStrengthAsync(password);
+        StrengthText.Text = result is null
+            ? "（强度检查不可用）"
+            : (result.Valid ? "✓ 强度合格    " : "✗ 还不合格    ") + result.Display;
+    }
+
+    private async void OnChangePasswordClick(object sender, RoutedEventArgs e)
+    {
+        var oldPassword = OldPasswordBox.Password;
+        var newPassword = NewPasswordBox.Password;
+
+        if (string.IsNullOrEmpty(oldPassword) || string.IsNullOrEmpty(newPassword))
+        {
+            SecurityHintText.Text = "当前密码与新密码都要填。";
+            return;
+        }
+
+        // 改密码可能把自己锁在外面，先说清后果。
+        var answer = System.Windows.MessageBox.Show(
+            $"确定修改 SnowLuma 的 WebUI 密码？{Environment.NewLine}{Environment.NewLine}"
+            + "修改后当前会话可能失效，DSQQ 保存的旧密码也会作废 —— "
+            + "需要重新登录一次，DSQQ 会用新密码覆盖保存。",
+            "确认修改密码",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            SecurityHintText.Text = "已取消。";
+            return;
+        }
+
+        ChangePasswordButton.IsEnabled = false;
+        try
+        {
+            var result = await _client.ChangePasswordAsync(oldPassword, newPassword);
+
+            if (result?.Success == true)
+            {
+                // 立刻用新密码重新登录并把凭据存下来 —— 否则下一次刷新就掉线了。
+                var login = await _client.LoginAsync(newPassword);
+                if (login.Outcome == LoginOutcome.Success)
+                {
+                    SaveCredentials(newPassword);
+                    SecurityHintText.Text = "密码已修改，并用新密码重新登录成功（凭据已更新）。";
+                }
+                else
+                {
+                    SecurityHintText.Text = $"密码已修改，但用新密码重新登录失败：{login.Message}";
+                }
+            }
+            else
+            {
+                SecurityHintText.Text = result?.Message ?? "修改失败（密码强度可能不足）。";
+            }
+        }
+        finally
+        {
+            ChangePasswordButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnTotpBeginClick(object sender, RoutedEventArgs e)
+    {
+        // begin 的响应含一次性密钥/otpauth URL，字段名随版本可能变，
+        // 所以原样展示给用户，而不是猜字段名去解析。
+        var raw = await _client.BeginTotpAsync("SnowLuma", "SnowLuma");
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            TotpSecretText.Text = "开始启用失败（可能未登录）。";
+            TotpSecretText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        _totpEnrolling = true;
+        TotpSecretText.Text =
+            "把下面这段里的密钥/otpauth 链接加入你的验证器应用，然后填动态码点「确认启用」："
+            + Environment.NewLine + raw;
+        TotpSecretText.Visibility = Visibility.Visible;
+    }
+
+    private async void OnTotpConfirmClick(object sender, RoutedEventArgs e)
+    {
+        if (!_totpEnrolling)
+        {
+            TotpSecretText.Text = "请先点「开始启用」。";
+            TotpSecretText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var code = TotpCodeBox.Text.Trim();
+        var password = TotpPasswordBox.Password;
+
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(password))
+        {
+            TotpSecretText.Text = "动态码与当前密码都要填。";
+            return;
+        }
+
+        var result = await _client.ConfirmTotpAsync(code, password);
+        TotpSecretText.Text = result?.Success == true
+            ? "两步验证已启用。"
+            : (result?.Message ?? "确认失败（动态码可能已过期，重来一次）。");
+
+        if (result?.Success == true)
+        {
+            _totpEnrolling = false;
+            await LoadSecurityAsync();
+        }
+    }
+
+    private async void OnTotpDisableClick(object sender, RoutedEventArgs e)
+    {
+        var password = TotpPasswordBox.Password;
+        var code = TotpCodeBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(password) || string.IsNullOrEmpty(code))
+        {
+            TotpSecretText.Text = "关闭两步验证需要当前密码与一个有效动态码 —— 请在「动态码」「当前密码」两栏填好。";
+            TotpSecretText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var result = await _client.DisableTotpAsync(password, code);
+        TotpSecretText.Text = result?.Success == true
+            ? "两步验证已关闭。"
+            : (result?.Message ?? "关闭失败。");
+
+        if (result?.Success == true)
+        {
+            await LoadSecurityAsync();
+        }
+    }
+
+    private async void OnSaveNotificationsClick(object sender, RoutedEventArgs e)
+    {
+        if (!int.TryParse(DebounceBox.Text.Trim(), out var seconds) || seconds < 0)
+        {
+            NotificationHintText.Text = "去抖秒数必须是不小于 0 的整数。";
+            return;
+        }
+
+        var config = await _client.GetNotificationsConfigAsync();
+        if (config is null)
+        {
+            NotificationHintText.Text = "读不到通知配置，无法保存。";
+            return;
+        }
+
+        // 只改去抖秒数，channels 原样带回 —— 它的结构没建模，重建会丢渠道。
+        config.DebounceSeconds = seconds;
+
+        var result = await _client.SaveNotificationsConfigAsync(config);
+        NotificationHintText.Text = result?.Success == true
+            ? "已保存。"
+            : (result?.Message ?? "保存失败。");
+
+        if (result?.Success == true)
+        {
+            await LoadNotificationsAsync();
+        }
     }
 
     // ── 日志 ──
