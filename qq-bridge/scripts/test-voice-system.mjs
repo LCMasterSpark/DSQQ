@@ -45,7 +45,7 @@ for (const [rel, toolRel] of [['..\\voice-tool\\voice-gui.mjs', 'voice-gui.mjs']
 }
 for (const rel of ['src/voice-core.js', 'src/send-voice-lib.js',
   'scripts/send-voice.mjs', 'scripts/test-voice.mjs', 'scripts/test-voice-gui.mjs',
-  'scripts/test-encoding.mjs', 'scripts/test-console-static.mjs']) {
+  'scripts/test-encoding.mjs']) {
   ok(exists(rel), rel);
 }
 
@@ -163,12 +163,8 @@ console.log('## qq-bridge 语音系统：MCP 工具与开关映射');
   }
 }
 
-console.log('## qq-bridge 语音系统：控制台与 preset');
+console.log('## qq-bridge 语音系统：preset（面板已搬到 DSQQ，不再查网页）');
 {
-  const html = read('public/console.html');
-  ok(html.includes('data-v2-tool="sendVoice"'), '控制台有 sendVoice 工具开关');
-  ok(html.includes('id="voiceList"') && html.includes('id="voiceSendBtn"'), '控制台有语音库调试面板');
-  ok(/api\/voice\/list/.test(html) && /api\/voice\/send/.test(html), '面板调用操作者端点');
   const preset = read(path.join('dsh', 'agent-presets', 'qq-chat-v2', 'agent.cordis.yml'));
   ok(preset.includes('qq_send_voice') && preset.includes('qq_list_voices'), 'qq-chat-v2 人设描述语音能力');
   ok(/语音\*\*默认是关闭的\*\*/.test(preset), '人设说明默认关闭');

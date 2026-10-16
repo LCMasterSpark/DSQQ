@@ -208,16 +208,10 @@ console.log('## preset 人设已描述语音能力（否则 AI 不知道自己�
   ok(restrict.includes("'mcp__snowluma__'"), 'preset 白名单以前缀放行 mcp__snowluma__*（覆盖语音工具）');
 }
 
-console.log('## 控制台契约');
+console.log('## 工具开关契约（面板已搬到 DSQQ，不再查网页）');
 {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8');
   const bridgeSrc = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
-  ok(html.includes('data-v2-tool="sendVoice"'), '控制台有 sendVoice 工具开关');
   ok(bridgeSrc.includes("'sendVoice']"), 'config API 的 toolFlags 含 sendVoice');
-  const uniq = (a) => [...new Set(a)].sort();
-  const views = uniq([...html.matchAll(/data-view="([a-z0-9-]+)"/g)].map((m) => m[1]));
-  const pages = uniq([...html.matchAll(/data-page="([a-z0-9-]+)"/g)].map((m) => m[1]));
-  ok(JSON.stringify(views) === JSON.stringify(pages), `data-view 与 data-page 一一对应（${views.length} 个视图）`);
 }
 
 console.log('## 回归：AI 语音通道不许穿出语音库（P1，曾可复现）');

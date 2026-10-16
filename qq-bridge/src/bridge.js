@@ -3251,6 +3251,17 @@ function personaInjection() {
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer'
       };
+      // 网页控制台（GET /）与开关页面（GET /whitelist）已移除：两者的功能全部搬进了
+      // DSQQ 自带的「桥接控制台」页，桥接不再自带任何界面，也不再读 public/ 下的文件。
+      // 这两个地址保留下来，只为让老书签和老文档指向的链接不至于 404 或白屏 ——
+      // 打开会看到一句指路，仅此而已。
+      const REMOVED_PAGE = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>页面已移除</title></head>
+<body style="font-family:system-ui,'Segoe UI',sans-serif;padding:2.5rem;line-height:1.8;color:#222">
+<h1 style="font-size:1.15rem;margin:0 0 .8rem">这个网页已经移除了</h1>
+<p style="margin:.4rem 0">桥接不再自带网页界面，面板功能全部搬到了 DSQQ 的「桥接控制台」页。</p>
+<p style="margin:.4rem 0;color:#666">请打开 DSQQ 使用。本地址（<code>127.0.0.1:3100</code>）以后只用作接口。</p>
+</body></html>`;
       const sendJson = (obj, status = 200) => {
         res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', ...SECURITY_HEADERS });
         res.end(JSON.stringify(obj, null, 2));
@@ -3465,15 +3476,10 @@ function personaInjection() {
         }
         if (req.method === 'GET' && url.pathname === '/') {
           res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...SECURITY_HEADERS });
-          try {
-            res.end(fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8'));
-          } catch {
-            res.end('控制台页面缺失：qq-bridge/public/console.html');
-          }
+          res.end(REMOVED_PAGE);
           return;
         }
-        // 开关页面（本机新增）：可视化增减可聊天的群与私聊账号。
-        // ── 只读静态资源：assets/ 下的图片（供控制台预览预警配图等）──
+        // ── 只读静态资源：assets/ 下的图片 ──
         // 仅此一个目录、仅图片扩展名、且解析后必须仍在 assets/ 内（防路径穿越）。
         if (req.method === 'GET' && url.pathname.startsWith('/assets/')) {
           try {
@@ -3501,23 +3507,13 @@ function personaInjection() {
           res.writeHead(200, {
             ...SECURITY_HEADERS,
             'content-type': 'text/html; charset=utf-8',
-            // 明确禁缓存：这个页面经常改，加载到旧版本会让人误以为「改了没生效」
-            // 放在 SECURITY_HEADERS 之后，覆盖其中可能已有的同名头
             'cache-control': 'no-store, must-revalidate'
           });
-          try {
-            let page = fs.readFileSync(path.join(ROOT, 'public', 'whitelist.html'), 'utf8');
-            // 注入构建指纹（页面内容哈希前 12 位）：排查缓存问题时对照用
-            const build = crypto.createHash('sha256').update(page).digest('hex').slice(0, 12);
-            page = page.replace('PAGE_BUILD_PLACEHOLDER', build);
-            res.end(page);
-          } catch {
-            res.end('开关页面缺失：qq-bridge/public/whitelist.html');
-          }
+          res.end(REMOVED_PAGE);
           return;
         }
-        // 机器人当前所在的群（供开关页面列出"新群"）。SnowLuma 未连接时返回 ok:false 而不是 500，
-        // 让页面能降级显示已有白名单。
+        // 机器人当前所在的群（DSQQ 的「白名单」页用它列出"新群"）。SnowLuma 未连接时返回
+        // ok:false 而不是 500，让调用方能降级显示已有白名单。
         if (req.method === 'GET' && url.pathname === '/api/qq/groups') {
           try {
             const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
