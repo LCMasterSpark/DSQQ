@@ -431,6 +431,30 @@ public sealed class BridgeApiClient : IDisposable
             "/api/stickers/remark", new { stickerId, remark = remark ?? string.Empty }, cancellationToken);
     }
 
+    // 列出语音库里的音频文件。
+    //
+    // probe=false 时桥接只列文件名不做探测（快）；默认探测，会顺带告诉你每个文件能不能当语音发。
+    // 控制台通道不需要 key，响应里会带回语音库目录的绝对路径（AI 通道下那个字段是被抑制的）。
+    public Task<VoiceListResponse?> GetVoicesAsync(
+        bool probe = true, CancellationToken cancellationToken = default)
+        => GetAsync<VoiceListResponse>($"/api/voice/list?probe={(probe ? "1" : "0")}", cancellationToken);
+
+    // 让桥接发一条语音。
+    //
+    // dryRun=true 时只做检查（解析文件、探测音频、校验目标与音量），不真的发出去 ——
+    // 界面上「先检查」用的就是它，因为语音发出去就撤不回来了。
+    // 注意这是**操作者通道**：socialV2.voice.enabled 只管 AI 能不能发语音，不影响这里手动试发。
+    public Task<VoiceSendResponse?> SendVoiceAsync(
+        string target, string file, double? volume = null, bool normalize = false,
+        bool dryRun = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        ArgumentException.ThrowIfNullOrWhiteSpace(file);
+
+        return PostForResultAsync<VoiceSendResponse>(
+            "/api/send/voice", new { target, file, volume, normalize, dryRun }, cancellationToken);
+    }
+
     // 读取挂起审批 / 提问。
     // 只读 —— 应答由 QQ 消息完成（管理员在对应会话回复"通过/拒绝"或答案）。
     public Task<PendingResponse?> GetPendingAsync(CancellationToken cancellationToken = default)

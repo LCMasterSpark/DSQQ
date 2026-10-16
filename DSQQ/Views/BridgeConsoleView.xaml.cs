@@ -1521,6 +1521,13 @@ public partial class BridgeConsoleView : UserControl
             _stickersLoaded = true;
             await LoadStickersAsync(null, ReadStickerCount());
         }
+
+        // 语音库同理：列一次要给每个文件跑探测，没人看的时候不该做。
+        if (ConsoleTabs.SelectedItem is System.Windows.Controls.TabItem { Header: "语音库" } && !_voicesLoaded)
+        {
+            _voicesLoaded = true;
+            await LoadVoicesAsync();
+        }
     }
 
     // 读取表情库。force=false 读缓存（先看库，再决定要不要花一次同步）。
@@ -1743,6 +1750,162 @@ public partial class BridgeConsoleView : UserControl
     // 数量输入非法时退回默认值，而不是报错打断操作。
     private int ReadStickerCount()
         => int.TryParse(StickerCountBox.Text.Trim(), out var n) && n > 0 ? Math.Min(n, 500) : 48;
+
+    // ── 语音库 ──
+
+    private bool _voicesLoaded;
+
+    private async Task LoadVoicesAsync()
+    {
+        var result = await _client.GetVoicesAsync();
+
+        if (result is null)
+        {
+            VoiceHintText.Text = "未能读取语音库（桥接可能未运行）。";
+            return;
+        }
+
+        // 库为空不算失败，桥接会在 hint 里直接告诉你目录在哪。
+        if (!result.Ok)
+        {
+            VoiceHintText.Text = $"读取失败：{result.Error ?? "（无原因）"}";
+            return;
+        }
+
+        VoiceDirText.Text = string.IsNullOrWhiteSpace(result.Dir) ? "（桥接未告知）" : result.Dir!;
+        VoiceList.ItemsSource = result.Voices;
+        VoiceLimitsText.Text = result.Limits?.Display ?? string.Empty;
+
+        if (result.Count == 0)
+        {
+            VoiceHintText.Text = result.Hint ?? "语音库是空的。";
+        }
+        else if (result.Voices.Any(v => !v.Ok))
+        {
+            // 探测没过的文件发不出去，先说一声，别等用户点了才告诉他。
+            VoiceHintText.Text = $"共 {result.Count} 个文件。其中有的探测没通过，选中时会说明原因。";
+        }
+        else
+        {
+            VoiceHintText.Text = $"共 {result.Count} 个文件，都可以发。";
+        }
+
+        FillVoiceTargets();
+    }
+
+    // 目标会话下拉。用可编辑的 ComboBox：这里给的只是"建议值"（会话表里的 key），
+    // 用户照样可以手写一个还没出现过但确实在白名单里的会话。
+    private void FillVoiceTargets()
+    {
+        var typed = VoiceTargetCombo.Text;
+
+        if (VoiceTargetCombo.ItemsSource is null)
+        {
+            VoiceTargetCombo.ItemsSource = _sessionsSnapshot.Select(s => s.Key).ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(typed))
+        {
+            VoiceTargetCombo.Text = typed;
+        }
+    }
+
+    private async void OnVoiceRefreshClick(object sender, RoutedEventArgs e)
+        => await LoadVoicesAsync();
+
+    // 选中文件就填进右边的文件名框 —— 手输路径容易写错，而这里的名字是桥接刚刚确认存在的。
+    private void OnVoiceSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (VoiceList.SelectedItem is not VoiceEntry voice)
+        {
+            return;
+        }
+
+        VoiceFileBox.Text = voice.Name;
+        VoiceResultSummary.Text = string.Empty;
+        VoiceResultText.Text = string.Empty;
+
+        if (!voice.Ok)
+        {
+            VoiceResultSummary.Text = $"✗ 这个文件发不出去：{voice.Error ?? "（桥接没给原因）"}";
+        }
+    }
+
+    private async void OnVoiceCheckClick(object sender, RoutedEventArgs e)
+        => await SendVoiceAsync(dryRun: true);
+
+    private async void OnVoiceSendClick(object sender, RoutedEventArgs e)
+    {
+        if (!ReadVoiceInputs(out var target, out var file))
+        {
+            return;
+        }
+
+        // 语音发出去撤不回来，真发之前挡一道。
+        var answer = System.Windows.MessageBox.Show(
+            $"把「{file}」作为语音发到 {target}？{Environment.NewLine}{Environment.NewLine}"
+            + "发出去就撤不回来了。想先确认这个文件能不能发，用「先检查」。",
+            "确认发送语音",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            VoiceResultSummary.Text = "已取消，没有发出。";
+            return;
+        }
+
+        await SendVoiceAsync(dryRun: false);
+    }
+
+    // 两个入口共用的输入校验。省得"先检查"和"发送"对空输入给出两套说法。
+    private bool ReadVoiceInputs(out string target, out string file)
+    {
+        target = VoiceTargetCombo.Text.Trim();
+        file = VoiceFileBox.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            VoiceResultSummary.Text = "✗ 先填目标会话（形如 group:123456 或 private:123456）。";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(file))
+        {
+            VoiceResultSummary.Text = "✗ 先在左边选一个音频文件，或直接写文件名。";
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task SendVoiceAsync(bool dryRun)
+    {
+        if (!ReadVoiceInputs(out var target, out var file))
+        {
+            return;
+        }
+
+        VoiceResultSummary.Text = dryRun ? "正在检查…" : "正在发送…";
+        VoiceResultText.Text = string.Empty;
+
+        var result = await _client.SendVoiceAsync(target, file, ReadVoiceVolume(), normalize: false, dryRun: dryRun);
+
+        if (result is null)
+        {
+            VoiceResultSummary.Text = $"✗ {_client.LastError ?? "（没有响应）"}";
+            return;
+        }
+
+        VoiceResultSummary.Text = result.Summary;
+        VoiceResultText.Text = result.DetailText;
+    }
+
+    // 音量留空表示"用桥接默认"，所以空串不能当成 0。
+    private double? ReadVoiceVolume()
+        => double.TryParse(VoiceVolumeBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
+            ? v
+            : null;
 
     // ── 上下文重置 ──
 

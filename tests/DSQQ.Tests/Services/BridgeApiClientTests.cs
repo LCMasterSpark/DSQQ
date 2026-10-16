@@ -310,4 +310,94 @@ public sealed class BridgeApiClientTests
 
         Assert.Null(server.LastRequestBody);
     }
+
+    // ── 语音库 ──
+
+    // 「先检查」与「发送」走的是同一个端点，区别**只**在 dryRun 这一个字段。
+    // 桥接里 dryRun 是在限流检查之前就 return 的，所以这个字段一旦没发出去，
+    // 用户点「先检查」会真的把语音发出去 —— 这正是本条用例要钉死的东西。
+    [Fact]
+    public async Task 先检查应把_dryRun_发成_true()
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true,"dryRun":true}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        var result = await client.SendVoiceAsync("group:123", "早安.wav", dryRun: true);
+
+        Assert.True(result!.DryRun);
+        Assert.Equal("/api/send/voice", server.RequestPaths[^1]);
+
+        using var body = JsonDocument.Parse(server.LastRequestBody!);
+        Assert.True(body.RootElement.GetProperty("dryRun").GetBoolean());
+        Assert.Equal("group:123", body.RootElement.GetProperty("target").GetString());
+        Assert.Equal("早安.wav", body.RootElement.GetProperty("file").GetString());
+    }
+
+    [Fact]
+    public async Task 发送应把_dryRun_发成_false()
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true,"messageId":7}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        await client.SendVoiceAsync("group:123", "早安.wav");
+
+        using var body = JsonDocument.Parse(server.LastRequestBody!);
+        Assert.False(body.RootElement.GetProperty("dryRun").GetBoolean());
+    }
+
+    // 音量留空表示"用桥接默认"。发个 0 过去会被当成"静音"，那是另一回事。
+    [Fact]
+    public async Task 音量留空时不发这个字段()
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        await client.SendVoiceAsync("group:123", "早安.wav");
+
+        using var body = JsonDocument.Parse(server.LastRequestBody!);
+        Assert.False(body.RootElement.TryGetProperty("volume", out _));
+    }
+
+    [Fact]
+    public async Task 音量有值时应发出去()
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        await client.SendVoiceAsync("group:123", "早安.wav", volume: 0.8, normalize: true, dryRun: true);
+
+        using var body = JsonDocument.Parse(server.LastRequestBody!);
+        Assert.Equal(0.8, body.RootElement.GetProperty("volume").GetDouble(), 3);
+        Assert.True(body.RootElement.GetProperty("normalize").GetBoolean());
+    }
+
+    [Fact]
+    public async Task 语音列表默认带探测开关()
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true,"count":0,"voices":[]}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        await client.GetVoicesAsync();
+        Assert.Equal("/api/voice/list?probe=1", server.RequestTargets[^1]);
+
+        await client.GetVoicesAsync(probe: false);
+        Assert.Equal("/api/voice/list?probe=0", server.RequestTargets[^1]);
+    }
+
+    // 目标与文件都是必填：缺了桥接只能回一句"target 格式应为…"，
+    // 倒不如在本地就说清楚，也省一次请求。
+    [Theory]
+    [InlineData("", "a.wav")]
+    [InlineData("   ", "a.wav")]
+    [InlineData("group:1", "")]
+    [InlineData("group:1", "   ")]
+    public async Task 目标或文件为空时不应发请求(string target, string file)
+    {
+        using var server = new StubHttpServer { ResponseBody = """{"ok":true}""" };
+        using var client = new BridgeApiClient(server.BaseUri);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => client.SendVoiceAsync(target, file));
+
+        Assert.Null(server.LastRequestBody);
+    }
 }

@@ -52,6 +52,10 @@ public sealed class StubHttpServer : IDisposable
     // 收到过的请求路径（不含查询串），按顺序。
     public List<string> RequestPaths { get; } = [];
 
+    // 收到过的完整请求目标（**含查询串**），按顺序。
+    // 路由按路径匹配所以 RequestPaths 去掉了查询串，但"参数有没有真的发出去"只能看这个。
+    public List<string> RequestTargets { get; } = [];
+
     // 最近一次请求的原始文本（含请求行、头、正文），仅供排查用。
     public string? LastRawRequest { get; private set; }
 
@@ -104,6 +108,7 @@ public sealed class StubHttpServer : IDisposable
 
         var text = request.ToString();
         var path = string.Empty;
+        var target = string.Empty;
         var contentLength = 0;
         var chunked = false;
 
@@ -126,6 +131,7 @@ public sealed class StubHttpServer : IDisposable
                 var parts = line.Split(' ');
                 if (parts.Length >= 2)
                 {
+                    target = parts[1];
                     // 去掉查询串，路由按路径匹配。
                     path = parts[1].Split('?')[0];
                 }
@@ -133,6 +139,7 @@ public sealed class StubHttpServer : IDisposable
         }
 
         RequestPaths.Add(path);
+        RequestTargets.Add(target);
         LastRawRequest = text;
 
         if (headerEnd >= 0 && chunked)
