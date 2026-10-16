@@ -1,8 +1,6 @@
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using DSQQ.Services;
+using DSQQ.Tests.Infrastructure;
 
 namespace DSQQ.Tests.Services;
 
@@ -70,7 +68,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 已登录时请求应带_Bearer_头()
     {
-        using var server = new StubServer();
+        using var server = new StubHttpServer();
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         client.ImportToken("tok-abc");
@@ -82,7 +80,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 未登录时请求不应带_Authorization_头()
     {
-        using var server = new StubServer();
+        using var server = new StubHttpServer();
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         await client.GetStatusAsync();
@@ -94,7 +92,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 清除_token_后请求不再带_头()
     {
-        using var server = new StubServer();
+        using var server = new StubHttpServer();
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         client.ImportToken("tok-abc");
@@ -110,7 +108,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 登录成功应自动记下_token()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             ResponseBody = """{"success":true,"token":"from-login"}""",
         };
@@ -127,7 +125,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 登录失败不应留下_token()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             StatusCode = 401,
             ResponseBody = """{"success":false,"message":"bad"}""",
@@ -143,7 +141,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 登出应清除_token()
     {
-        using var server = new StubServer();
+        using var server = new StubHttpServer();
         using var client = new SnowLumaApiClient(server.BaseUri);
         client.ImportToken("tok-abc");
 
@@ -157,7 +155,7 @@ public sealed class SnowLumaApiClientTests
     {
         // 只回 success 不给 token（或字段名变了）时，必须留在未登录状态 ——
         // 否则界面会显示"已登录"而所有请求仍然 401。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             ResponseBody = """{"success":true}""",
         };
@@ -172,7 +170,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 需要两步验证时应如实报告()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             ResponseBody = """{"success":false,"needsTotp":true}""",
         };
@@ -194,7 +192,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 进程列表应能解析出外壳里的条目()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -215,7 +213,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 空进程列表应回空集合而不是抛错()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/processes"] = """{"list":[]}""" },
         };
@@ -228,7 +226,7 @@ public sealed class SnowLumaApiClientTests
     public async Task 运行状态应解析_status_字段()
     {
         // 真实响应就是 {"status":"running"} —— 没有 version / accounts。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/status"] = """{"status":"running"}""" },
         };
@@ -243,7 +241,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 账号列表应能解析出外壳里的条目()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/qq-list"] = """{"list":[{"uin":"3551510664","nickname":"O.o"}]}""" },
         };
@@ -259,7 +257,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 接入点状态应能解析出适配器明细()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -280,7 +278,7 @@ public sealed class SnowLumaApiClientTests
     public async Task 未登录账号的_uin_零应显示为破折号()
     {
         // 未登录时服务端回的是字符串 "0"，直接显示会让人以为真有个 0 号 QQ。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/processes"] = """{"list":[{"pid":524,"name":"QQ.exe","uin":"0"}]}""" },
         };
@@ -296,7 +294,7 @@ public sealed class SnowLumaApiClientTests
     {
         // GET /api/config/:uin 回的是 {"config":{…}}。按裸对象解析会让 Networks 恒为 null，
         // 界面于是显示"这个账号还没有任何接入点"—— 而实际上端口都配好了。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -321,7 +319,7 @@ public sealed class SnowLumaApiClientTests
     {
         // POST 是整体覆盖语义。historySync / notifications 这类我没建模的字段
         // 必须靠 JsonExtensionData 留住，否则一改配置就把它们抹掉。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -343,7 +341,7 @@ public sealed class SnowLumaApiClientTests
     {
         // GET 有包装、POST 不要包装 —— 服务端 POST 直接拿 body 做配置校验。
         // 提交时多包一层会被 assertValidOneBotConfig 拒绝。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             ResponseBody = """{"success":true,"saved":true,"applied":true}""",
         };
@@ -373,7 +371,7 @@ public sealed class SnowLumaApiClientTests
     public async Task 日志应能穿过_list_包装层()
     {
         // GET /api/logs 顶层是 {"list":[…]}，又一个外壳。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -394,7 +392,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 日志缺少_line_时应自行拼接展示()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/logs"] = """{"list":[{"time":"T","level":"warn","scope":"Hook","message":"挂载失败"}]}""" },
         };
@@ -409,7 +407,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 日志级别应能解析并与可选级别区分()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/logs/level"] = """{"level":"info","levels":["trace","debug","info","success","warn","error"]}""" },
         };
@@ -426,7 +424,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 设置日志级别应提交_level_字段()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             ResponseBody = """{"success":true}""",
         };
@@ -444,7 +442,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 系统信息应解析出机器与负载字段()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -466,7 +464,7 @@ public sealed class SnowLumaApiClientTests
     {
         // saved 是用户配置，effective 是算上环境变量后的实际值 ——
         // 两者不一致时要能在界面上提示"有环境变量覆盖"。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -489,7 +487,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 保存存储设置应提交三个字段()
     {
-        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var server = new StubHttpServer { ResponseBody = """{"success":true}""" };
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         var ok = await client.SaveStorageSettingsAsync(new DSQQ.Models.SnowLumaStorageSettings
@@ -510,7 +508,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 更新检查应解析出版本与发布页()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -530,7 +528,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 清理存储应把失败如实回报()
     {
-        using var server = new StubServer { StatusCode = 500, ResponseBody = """{"success":false}""" };
+        using var server = new StubHttpServer { StatusCode = 500, ResponseBody = """{"success":false}""" };
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         Assert.False(await client.CleanupStorageAsync());
@@ -541,7 +539,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 登录状态应解析出必须改密码标志()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/auth/state"] = """{"mustChangePassword":true}""" },
         };
@@ -556,7 +554,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 两步验证状态应解析()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/auth/totp"] = """{"enabled":true}""" },
         };
@@ -568,7 +566,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 密码强度应逐条返回并拼成可读行()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -592,7 +590,7 @@ public sealed class SnowLumaApiClientTests
     {
         // 字段名以服务端实现为准（auth.verify(body.oldPassword) 等）——
         // 写错一个名字会得到"当前密码不正确"，很难看出是字段名的问题。
-        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var server = new StubHttpServer { ResponseBody = """{"success":true}""" };
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         var result = await client.ChangePasswordAsync("old-pw", "NewPw#123456");
@@ -605,7 +603,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 确认两步验证应提交_code_与_password()
     {
-        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var server = new StubHttpServer { ResponseBody = """{"success":true}""" };
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         await client.ConfirmTotpAsync("123456", "pw");
@@ -617,7 +615,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 关闭两步验证应提交_password_与_totp()
     {
-        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var server = new StubHttpServer { ResponseBody = """{"success":true}""" };
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         await client.DisableTotpAsync("pw", "654321");
@@ -629,7 +627,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 通知配置应穿过_config_包装并保留渠道数()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -650,7 +648,7 @@ public sealed class SnowLumaApiClientTests
     {
         // channels 的结构没建模（随渠道类型而变）。POST 是整体覆盖语义，
         // 回写时若把它们丢了，用户的推送渠道会被静默清空。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes =
             {
@@ -663,7 +661,7 @@ public sealed class SnowLumaApiClientTests
         config!.DebounceSeconds = 60;
 
         // 读与写打同一个路径，所以这里先把桩的响应换成写回执。
-        using var writeServer = new StubServer { ResponseBody = """{"success":true}""" };
+        using var writeServer = new StubHttpServer { ResponseBody = """{"success":true}""" };
         using var writeClient = new SnowLumaApiClient(writeServer.BaseUri);
         await writeClient.SaveNotificationsConfigAsync(config);
 
@@ -676,7 +674,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 最近通知应保留原始文本()
     {
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             Routes = { ["/api/notifications/recent"] = """{"recent":[{"time":"2026-10-16T11:00:00Z","level":"warn","title":"注入退化"}]}""" },
         };
@@ -691,7 +689,7 @@ public sealed class SnowLumaApiClientTests
     [Fact]
     public async Task 发测试通知应提交_channelId()
     {
-        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var server = new StubHttpServer { ResponseBody = """{"success":true}""" };
         using var client = new SnowLumaApiClient(server.BaseUri);
 
         await client.TestNotificationAsync("chan-1");
@@ -704,7 +702,7 @@ public sealed class SnowLumaApiClientTests
     public async Task 失败回执里的_message_不应被丢掉()
     {
         // 服务端把失败原因放在 message 里。只看状态码会让用户永远只看到"失败了"。
-        using var server = new StubServer
+        using var server = new StubHttpServer
         {
             StatusCode = 401,
             ResponseBody = """{"success":false,"message":"当前密码不正确"}""",
@@ -715,166 +713,5 @@ public sealed class SnowLumaApiClientTests
 
         Assert.False(result?.Success);
         Assert.Equal("当前密码不正确", result!.Message);
-    }
-
-    // ── 极简 HTTP 桩 ──
-    //
-    // 用 TcpListener 而不是 HttpListener：后者在 Windows 上需要 URL 预留（通常要管理员），
-    // 测试会因为权限而失败。TcpListener 绑随机端口没有任何前提。
-    private sealed class StubServer : IDisposable
-    {
-        private readonly TcpListener _listener;
-        private readonly CancellationTokenSource _shutdown = new();
-        private readonly Task _loop;
-
-        public StubServer()
-        {
-            // 端口 0 = 让操作系统分配一个空闲端口，测试之间不会撞车。
-            _listener = new TcpListener(IPAddress.Loopback, 0);
-            _listener.Start();
-
-            var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
-            BaseUri = new Uri($"http://127.0.0.1:{port}");
-
-            _loop = Task.Run(AcceptLoopAsync);
-        }
-
-        public Uri BaseUri { get; }
-
-        public int StatusCode { get; init; } = 200;
-
-        public string ResponseBody { get; init; } = """{"version":"stub"}""";
-
-        // 按路径定制的响应；未命中的路径回落到 ResponseBody。
-        public Dictionary<string, string> Routes { get; } = new(StringComparer.OrdinalIgnoreCase);
-
-        // 最近一次请求里 Authorization 头的值；没有该头时为 null。
-        public string? LastAuthorization { get; private set; }
-
-        // 最近一次请求的正文（按 Content-Length 读全）；GET 时为 null。
-        public string? LastRequestBody { get; private set; }
-
-        private async Task AcceptLoopAsync()
-        {
-            while (!_shutdown.IsCancellationRequested)
-            {
-                TcpClient connection;
-                try
-                {
-                    connection = await _listener.AcceptTcpClientAsync(_shutdown.Token);
-                }
-                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException)
-                {
-                    return;
-                }
-
-                using (connection)
-                {
-                    await HandleAsync(connection);
-                }
-            }
-        }
-
-        private async Task HandleAsync(TcpClient connection)
-        {
-            // 每次请求前重置：否则"清除 token 后不再带 Authorization"这类断言
-            // 会读到上一次请求留下的值，测试因错误的原因通过。
-            LastAuthorization = null;
-            LastRequestBody = null;
-
-            var stream = connection.GetStream();
-            var buffer = new byte[8192];
-            var request = new StringBuilder();
-
-            // 先把头部读完（以空行结束），再按 Content-Length 把正文读全 ——
-            // 断言 POST 体形状的用例需要正文，只读头部是不够的。
-            var headerEnd = -1;
-            while (headerEnd < 0)
-            {
-                var read = await stream.ReadAsync(buffer);
-                if (read <= 0)
-                {
-                    break;
-                }
-
-                request.Append(Encoding.UTF8.GetString(buffer, 0, read));
-                headerEnd = request.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal);
-            }
-
-            var text = request.ToString();
-            var path = string.Empty;
-            var contentLength = 0;
-
-            foreach (var line in text.Split("\r\n"))
-            {
-                if (line.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))
-                {
-                    LastAuthorization = line["Authorization:".Length..].Trim();
-                }
-                else if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
-                {
-                    int.TryParse(line["Content-Length:".Length..].Trim(), out contentLength);
-                }
-                else if (line.StartsWith("GET ", StringComparison.Ordinal) || line.StartsWith("POST ", StringComparison.Ordinal))
-                {
-                    var parts = line.Split(' ');
-                    if (parts.Length >= 2)
-                    {
-                        // 去掉查询串，路由按路径匹配。
-                        path = parts[1].Split('?')[0];
-                    }
-                }
-            }
-
-            if (headerEnd >= 0 && contentLength > 0)
-            {
-                var bodySoFar = text[(headerEnd + 4)..];
-                var remaining = contentLength - bodySoFar.Length;
-                var extra = new StringBuilder(bodySoFar);
-
-                while (remaining > 0)
-                {
-                    var read = await stream.ReadAsync(buffer);
-                    if (read <= 0)
-                    {
-                        break;
-                    }
-
-                    extra.Append(Encoding.UTF8.GetString(buffer, 0, read));
-                    remaining -= read;
-                }
-
-                LastRequestBody = extra.ToString();
-            }
-
-            var payload = Routes.TryGetValue(path, out var routed) ? routed : ResponseBody;
-
-            var body = Encoding.UTF8.GetBytes(payload);
-            var header = Encoding.ASCII.GetBytes(
-                $"HTTP/1.1 {StatusCode} OK\r\n"
-                + "Content-Type: application/json\r\n"
-                + $"Content-Length: {body.Length}\r\n"
-                + "Connection: close\r\n\r\n");
-
-            await stream.WriteAsync(header);
-            await stream.WriteAsync(body);
-            await stream.FlushAsync();
-        }
-
-        public void Dispose()
-        {
-            _shutdown.Cancel();
-            _listener.Stop();
-            _shutdown.Dispose();
-
-            try
-            {
-                _loop.Wait(TimeSpan.FromSeconds(2));
-            }
-            catch (AggregateException)
-            {
-                // 关闭时的取消异常无需处理。
-            }
-        }
     }
 }
