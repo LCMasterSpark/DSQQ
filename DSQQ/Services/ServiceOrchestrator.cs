@@ -46,9 +46,8 @@ public readonly record struct StartupProgress(StartupStage Stage, string Message
 // 一律从端口反查 PID，只终止那棵进程树；
 // 桥接停止后清理 state/bridge.lock：它用锁文件做单实例保护，
 // 残留会让下次启动被判定为"已有实例在运行"而拒绝启动。
-// 合规边界：本类只负责"启动/停止进程"。协议同意、扫码登录
-// 必须由用户本人在 SnowLuma WebUI 完成 —— SnowLuma EULA §5.4 明确禁止
-// 通过自动化脚本部署其专有组件。
+// 范畴边界：本类只负责"启动/停止进程"。QQ 侧的登录与协议同意属于
+// SnowLuma 与 QQ 客户端自己的流程，本程序不涉及，只探测结果。
 // 参数 config：应用配置。
 public sealed class ServiceOrchestrator(AppConfig config)
 {

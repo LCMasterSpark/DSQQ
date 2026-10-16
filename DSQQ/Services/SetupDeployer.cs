@@ -6,8 +6,10 @@ namespace DSQQ.Services;
 
 // 一键配置部署：把**能自动做的**都做掉，做不了的明确说出来。
 //
-// 设计原则：绝不假装成功。QQ 扫码、同意协议、勾选群这些必须由人完成的事，
-// 一律返回 NeedsUser 并写清去哪做 —— 一个"全部完成"的假象比失败更浪费时间。
+// 设计原则：绝不假装成功。但凡本程序做不了的事，一律返回 NeedsUser
+// 并写清去哪做 —— 一个"全部完成"的假象比失败更浪费时间。
+//
+// 范畴边界：**QQ 侧的登录/协议同意不属于本程序**，报告事实即可，不做引导。
 //
 // 三层里每一层都有它自己的配置位置：
 //   SnowLuma 的 OneBot 端口 → POST /api/config/:uin（整体覆盖语义，必须先读后写）
@@ -368,8 +370,8 @@ public sealed class SetupDeployer
     // 拼出"读不到 QQ 账号"时该做什么。
     //
     // 这一步的措辞值得较真：读不到账号有**三种**成因，指向的动作完全不同 ——
-    // SnowLuma 没启动、DSQQ 没登录它的 WebUI、以及 QQ 本身没扫码。
-    // 一律说"请去扫码"会把用户引到错的地方。
+    // SnowLuma 没启动、DSQQ 没登录它的 WebUI、以及 QQ 侧尚未就绪。
+    // 前两者是本程序能帮上的；第三个不属于本程序范畴，只陈述事实。
     private async Task<string> BuildLoginHintAsync(CancellationToken cancellationToken)
     {
         var webUiOpen = await PortProbe
@@ -390,11 +392,10 @@ public sealed class SetupDeployer
         {
             return "SnowLuma 在运行，但 DSQQ 还没有它的 WebUI 会话。"
                 + "到「SnowLuma」页用它的 WebUI 密码登录一次（DSQQ 会记住），"
-                + "然后在那边同意用户协议并用 QQ 扫码登录。完成后回来点「重新检查」。";
+                + "然后回来点「重新检查」。";
         }
 
-        return "SnowLuma 在运行，但还没有登录中的 QQ 账号。"
-            + "点「服务管理」页的「打开 SnowLuma 控制台」，在那边同意用户协议并用 QQ 扫码登录"
-            + "（只需一次），完成后回来点「重新检查」。";
+        return "SnowLuma 在运行，但读不到已登录的 QQ 账号 —— "
+            + "QQ 侧尚未就绪（这一步属于 SnowLuma 的范畴，本程序不涉及）。";
     }
 }

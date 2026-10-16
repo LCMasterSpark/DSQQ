@@ -190,7 +190,7 @@ public partial class ServiceManagementView : UserControl
     // 这是"唤起 OneBot"的入口：OneBot 的 3000/3001 由 SnowLuma 在**账号登录后**才启动，
     // 而 SnowLuma 没有提供启停 OneBot 的接口（只有配置读写与登录），
     // 所以正确做法是把用户送到控制台去完成登录，而不是去"启动一个服务"。
-    // 按 EULA §5.4，协议同意与扫码登录必须由用户本人在其界面完成，这里只负责打开页面。
+    // QQ 侧的登录与协议同意由用户在其界面自行完成，这里只负责打开页面。
     private async void OnOpenSnowLumaClick(object sender, RoutedEventArgs e)
     {
         var config = _services.Config;

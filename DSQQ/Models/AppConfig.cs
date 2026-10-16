@@ -58,8 +58,11 @@ public sealed class SnowLumaSettings
     // 从偏好端口起连续探测的个数，用于应对端口顺延。
     public int PortProbeCount { get; set; } = 10;
 
-    // 是否向 launcher.bat 注入 SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD。
-    // 默认关闭：协议同意与扫码登录必须由用户本人完成（EULA §5.4 禁止自动化部署其专有组件）。
+    // 是否注入 SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD。
+    //
+    // 默认关闭，由便携版首次运行时打开（SetupDeployer.EnsureBootstrapPassword）——
+    // 这样 DSQQ 能自己记住 WebUI 密码并自动登录，用户不必手填。
+    // 注意它**只**影响 WebUI 密码；QQ 侧的登录与协议同意不在本程序范畴。
     public bool InjectBootstrapPassword { get; set; }
 
     // 启动密码；仅在 InjectBootstrapPassword 为真时使用。

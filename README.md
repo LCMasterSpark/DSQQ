@@ -22,13 +22,12 @@
 | DSH（DeepSeek Harness） | 自己装，假设你已有 —— 它是 AI 能力的来源 |
 | 其他一切 | **就在这个压缩包里** |
 
-首次运行只有两件事必须你本人做（程序无法代劳）：
-
-1. 在 SnowLuma 控制台**同意用户协议并扫码登录 QQ**（只需一次）
-2. 回 DSQQ 勾选要启用的群
-
+首次运行里，属于本程序这一侧的只有一件事：**勾选要启用的群**。
 其余（OneBot 端口、管理员、白名单、WebUI 会话）都由「一键配置」自动完成，
 界面上的「体检」卡片会逐条告诉你现在缺什么、下一步做什么。
+
+> QQ 侧的登录与协议同意不在本程序范畴内 —— 那是 SnowLuma 与 QQ 客户端的事，
+> 按它们的正常流程走即可。DSQQ 只探测结果，不做引导也不代劳。
 
 > 包里 **不含** 你的 QQ 号、访问令牌与聊天记录 —— 打包脚本有自检，
 > 命中任一项就直接失败退出。详见 `packaging/build-portable.py`。
@@ -98,32 +97,40 @@ dotnet build DSQQ.slnx     # 首次会还原 NuGet 包
 dotnet run --project DSQQ
 ```
 
-### 它不包含什么 —— 这一条最重要
+### 这个仓库里有什么
 
-**DSQQ 本身不包含 SnowLuma 与 qq-bridge 的任何二进制**，它只是这两者的控制面板（使用方）。
+| 组件 | 在本仓库里吗 | 说明 |
+| --- | --- | --- |
+| **DSQQ** | ✅ 源码 | 本仓库的主体，WPF 控制台 |
+| **qq-bridge** | ✅ 源码（`qq-bridge/`） | MIT 许可，已并入本仓库；见 `qq-bridge/VENDORED.md` |
+| **SnowLuma** | ❌ 源码不在 | 由**便携包构建时**从它自己的[公开 Release](https://github.com/SnowLuma/SnowLuma/releases) 下载 |
+| QQ 客户端 | ❌ | 腾讯的软件，无法打包，需自行安装 |
+| DSH | ❌ | AI 能力的来源，假设你已有 |
+
 所以：
 
-- **没有任何外部服务时，DSQQ 照样能打开** —— 界面会出现，服务状态显示离线，可以编辑配置、看日志。
-  它不会因为"依赖缺失"而启动失败。
-- 要真正收发 QQ 消息，你需要自己准备那两者，**它们不在本仓库里，请从各自的项目获取**。
+- **便携包里有完整的 DSQQ + SnowLuma + qq-bridge** —— 最终用户只需要下载那一个 zip。
+- **没有任何外部服务时，DSQQ 源码照样能编译运行** —— 界面会出现，服务状态显示离线，
+  可以编辑配置、看日志。它不会因为"依赖缺失"而启动失败。
+- 从源码自己部署时，才需要按下面这份顺序准备。
 
-### 完整部署顺序（从零开始）
+### 手动部署顺序（不用便携包时）
+
+> 便携包已经把这些都做好了。这一节只对"从源码构建、且要自己摆组件"的人有意义。
 
 1. **QQ 小号** —— 登录一个**不常用**的账号。SnowLuma 是第三方 QQ 客户端，接入非官方协议
    **存在账号风险**，别用主号。
-2. **SnowLuma** —— 从它自己的发布页获取，解压到任意目录（例如 `D:\SnowLuma`），
-   用自带的 `launcher.bat` 或 `node.exe index.mjs` 启动。
-   > 官方 `launcher.bat` 里写的是裸 `node` 命令，依赖 PATH 上有 node。
+2. **SnowLuma** —— 从它的[发布页](https://github.com/SnowLuma/SnowLuma/releases)下载
+   `SnowLuma-v<版本>-win-x64.zip`，解压到任意目录。
+   > 它自带的 `launcher.bat` 里写的是裸 `node` 命令，依赖 PATH 上有 node。
    > 若机器上没装全局 Node，它会静默失败 —— 这就是为什么 DSQQ 的一键启动**直接用安装目录里的
    > `node.exe` 跑 `index.mjs`**，绕开 PATH 依赖。
-3. **首次在 SnowLuma 界面里完成**（按它的 EULA §5.4，这些必须你本人操作，DSQQ 不代做）：
-   - 阅读并同意用户协议
-   - 完成 QQ 扫码登录
-   - 开启 OneBot：**HTTP 3000** 与 **WebSocket 3001**
-4. **qq-bridge** —— 从它自己的项目获取，放到任意目录（例如 `D:\qq-bridge`），
-   按其 README 安装依赖。它的控制台默认监听 **3100**。
-5. **DSQQ 里配置路径** —— 打开「设置」页，填 qq-bridge 与 SnowLuma 的实际安装目录、以及各自端口，
-   保存后生效。配置存在 `%APPDATA%\DSQQ\config.json`。
+3. **让 SnowLuma 侧就绪**（属于它的范畴，DSQQ 只探测结果）：
+   在它的界面里完成它要求的初始化，并开启 OneBot：**HTTP 3000** 与 **WebSocket 3001**。
+4. **qq-bridge** —— 已在本仓库的 `qq-bridge/`。可以用它，也可以自己 `git clone` 一份到别处。
+   它的控制台默认监听 **3100**。
+5. **DSQQ 里配置路径** —— 「设置」页填 qq-bridge 与 SnowLuma 的实际目录、以及各自端口。
+   留空也行：DSQQ 会按 `services/` 便携布局与常见位置自动搜索。
 6. **一键启动** —— 到「服务管理」页点「一键启动」，它会按顺序拉起 SnowLuma 与 qq-bridge 并等端口就绪。
 
 ### 端口一览（默认值）
@@ -208,14 +215,19 @@ git push origin v0.1.0
 
 也可以在 Actions 页面手动触发 `release` 工作流并填入版本号（此时只上传构建产物，不创建 Release）。
 
-## 合规说明
+## 关于第三方组件
 
-本程序是 SnowLuma 与 qq-bridge 的**使用方**：
+| 组件 | 许可 | 本仓库如何对待 |
+| --- | --- | --- |
+| **qq-bridge** | MIT | 源码已并入 `qq-bridge/`，保留原 LICENSE 与署名；差异记录在 `qq-bridge/MODIFICATIONS.md` |
+| **SnowLuma** | 第三方专有组件 | 源码**不**入库；便携包构建时从它的[公开 Release](https://github.com/SnowLuma/SnowLuma/releases) 下载后打进包里 |
+| QQ 客户端 | 腾讯 | 无法打包，需用户自行安装 |
 
-- 不包含、不捆绑两者的任何二进制；
-- 只负责启动 / 停止进程，**不会**代为接受协议或处理扫码登录
-  （SnowLuma EULA §5.4 禁止通过自动化脚本部署其专有组件）；
-- SnowLuma 是第三方 QQ 客户端，接入非官方协议**存在账号风险**，请勿使用主号。
+**风险提示**：SnowLuma 是第三方 QQ 客户端，接入非官方协议**存在账号风险**，
+请勿使用主号。
+
+**范畴边界**：QQ 侧的登录与协议同意属于 SnowLuma 与 QQ 客户端自己的流程，
+本程序不涉及 —— DSQQ 只探测结果（端口是否在听、进程是否注入），不做引导也不代劳。
 
 ## 项目结构
 
@@ -223,6 +235,8 @@ git push origin v0.1.0
 DSQQ.slnx
 ├─ Directory.Build.props        共享构建属性（版本、语言级别、分析器）
 ├─ .github/workflows/           build（构建+测试）与 release（tag 发布）
+├─ qq-bridge/                   AI 适配（MIT，已并入；node_modules 不入库，打包时现装）
+├─ packaging/                   便携包构建与并入脚本
 ├─ DSQQ/                        主程序
 │  ├─ Models/                   配置与两个 API 的数据模型
 │  ├─ Services/                 端口探测与 PID 反查、进程启动、编排、

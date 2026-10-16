@@ -24,7 +24,7 @@ public static class FirstRunCheck
         // 已就绪，不用管。
         Ready,
 
-        // 存在但还需要用户操作（例如尚未登录 QQ）。
+        // 存在但还没就绪（例如端口尚未开始监听）。
         Pending,
 
         // 找不到，必须处理。
@@ -126,8 +126,9 @@ public static class FirstRunCheck
                 "OneBot 接口",
                 CheckState.Pending,
                 "端口 3000 / 3001 没在监听",
-                "多半是 QQ 还没登录 —— 到「服务管理」页点「打开 SnowLuma 控制台」，"
-                + "在那边同意协议并扫码登录（只需一次）。"));
+                // 这两个端口由 SnowLuma 在 QQ 侧就绪后开启，属于它的范畴。
+                // 这里只报事实 —— 怎么让 QQ 那边就绪不是本程序该管的事。
+                "OneBot 端口由 SnowLuma 在 QQ 侧就绪后开启。"));
         }
         else
         {
