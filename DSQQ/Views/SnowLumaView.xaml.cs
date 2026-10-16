@@ -1,6 +1,7 @@
 using System.IO;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Net.Http;
 using System.Windows;
 using DSQQ.Models;
 using DSQQ.Services;
@@ -33,6 +34,21 @@ public partial class SnowLumaView : UserControl
     private readonly ObservableCollection<SnowLumaProcess> _processes = [];
     private Timer? _timer;
     private SnowLumaApiClient _client;
+
+    // 探测出来的登录 QQ 号，按 PID 缓存。
+    //
+    // 页面每 5 秒重拉一次列表，而探测要等 QQ 的本地端口回话 ——
+    // 不能跟着列表一起刷。这里连"探过但没探到"也一起记下来，
+    // 否则每 5 秒都会去问一次同一个注定问不到的进程。
+    private readonly Dictionary<int, ProbeCacheEntry> _probeCache = [];
+
+    // 同一个进程两次探测之间的最小间隔。
+    private static readonly TimeSpan ProbeCooldown = TimeSpan.FromSeconds(30);
+
+    // 是否有一轮探测还在跑 —— 探测比刷新慢，别让它们叠起来。
+    private bool _probing;
+
+    private sealed record ProbeCacheEntry(string? Uin, string? NickName, DateTimeOffset At);
 
     // 当前正在编辑的 OneBot 配置（整份持有，保存时整体回写）。
     private SnowLumaOneBotConfig? _config;
@@ -272,6 +288,9 @@ public partial class SnowLumaView : UserControl
             ProcessGrid.SelectedItem = _processes.FirstOrDefault(p => p.Pid == selectedPid);
         }
 
+        // 列表每轮都是新对象，把上次探测到的 QQ 号贴回来。
+        ApplyProbeCache();
+
         if (status is null)
         {
             OverviewText.Text = _client.HasSession
@@ -312,6 +331,77 @@ public partial class SnowLumaView : UserControl
         }
 
         HintText.Text = $"最后更新 {DateTime.Now:HH:mm:ss}";
+
+        // 探测放最后且不 await：它要等 QQ 的本地端口回话，
+        // 卡在这里会把整个 5 秒刷新周期拖住。
+        _ = ProbeMissingAccountsAsync();
+    }
+
+    // 把缓存里的探测结果贴回当前这批进程对象上。
+    private void ApplyProbeCache()
+    {
+        foreach (var process in _processes)
+        {
+            if (_probeCache.TryGetValue(process.Pid, out var entry))
+            {
+                process.ProbedUin = entry.Uin;
+                process.ProbedNickName = entry.NickName;
+                process.ProbeAttempted = true;
+            }
+        }
+    }
+
+    // 给「进程自己没报 QQ 号」的行补上探测结果。
+    //
+    // 未注入的进程 uin 恒为 "0"，但它照样可能已经登录了 QQ ——
+    // 以前这一列就只能显示 —，看起来像"这个进程什么都没有"。
+    private async Task ProbeMissingAccountsAsync()
+    {
+        if (_probing)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.Now;
+        var pending = _processes
+            .Where(p => string.IsNullOrWhiteSpace(p.Uin) || p.Uin == "0")
+            .Where(p => !_probeCache.TryGetValue(p.Pid, out var cached) || now - cached.At >= ProbeCooldown)
+            .ToList();
+
+        if (pending.Count == 0)
+        {
+            return;
+        }
+
+        _probing = true;
+        try
+        {
+            foreach (var process in pending)
+            {
+                var info = await _client.ProbeLoginAsync(process.Pid);
+
+                var uin = info?.Uin;
+                if (string.IsNullOrWhiteSpace(uin) || uin == "0")
+                {
+                    uin = null;
+                }
+
+                _probeCache[process.Pid] = new ProbeCacheEntry(uin, info?.NickName, DateTimeOffset.Now);
+            }
+
+            // 进程对象是普通类、没有 INotifyPropertyChanged，
+            // 改完属性得让表格整体重画一次才看得见。
+            ApplyProbeCache();
+            ProcessGrid.Items.Refresh();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            // 探测失败不该打断刷新：这一列退回显示 —，下次刷新还会再试。
+        }
+        finally
+        {
+            _probing = false;
+        }
     }
 
     // 接入点状态：这一栏回答「桥接到底连上没有」。
@@ -1541,8 +1631,24 @@ public partial class SnowLumaView : UserControl
         }
 
         var ok = await _client.RefreshProcessAsync(process.Pid);
+
+        // 「重新探测」这个名字本来就说的是把状态重新问一遍，
+        // 那就连登录 QQ 号一起问 —— 否则用户点了按钮，QQ 号那一列还是旧的。
+        _probeCache.Remove(process.Pid);
+        var info = await _client.ProbeLoginAsync(process.Pid);
+        var probedUin = info?.Uin;
+        if (string.IsNullOrWhiteSpace(probedUin) || probedUin == "0")
+        {
+            probedUin = null;
+        }
+
+        _probeCache[process.Pid] = new ProbeCacheEntry(probedUin, info?.NickName, DateTimeOffset.Now);
+
         ProcessHintText.Text = ok
-            ? $"已重新探测 PID {process.Pid}。"
+            ? probedUin is null
+                ? $"已重新探测 PID {process.Pid}；这个进程没登录 QQ，问不到 QQ 号。"
+                : $"已重新探测 PID {process.Pid}；登录的是 {probedUin}"
+                  + (string.IsNullOrWhiteSpace(info?.NickName) ? "。" : $"（{info!.NickName}）。")
             : $"重新探测 PID {process.Pid} 失败。";
 
         await RefreshAsync();

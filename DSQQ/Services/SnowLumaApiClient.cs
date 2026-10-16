@@ -486,6 +486,19 @@ public sealed class SnowLumaApiClient : IDisposable
     public Task<bool> RefreshProcessAsync(int pid, CancellationToken cancellationToken = default)
         => PostActionAsync($"/api/processes/{pid}/refresh", cancellationToken);
 
+    // 探测某个 QQ 进程登录的是哪个号。
+    //
+    // ⚠️ 这条接口**不需要注入** —— 它去问 QQ 自己的本地登录端口，
+    // 所以「已加载」为假的进程也能问出 QQ 号。
+    // ⚠️ 探不到时是 HTTP 200 + {"info":null}，返回值就是 null，不算失败。
+    public async Task<SnowLumaProbeLoginInfo?> ProbeLoginAsync(
+        int pid, CancellationToken cancellationToken = default)
+    {
+        var response = await GetAsync<SnowLumaProbeLoginResponse>(
+            $"/api/processes/{pid}/probe-login", cancellationToken).ConfigureAwait(false);
+        return response?.Info;
+    }
+
     // 执行一个无请求体的 POST 动作，只关心是否成功。
     private async Task<bool> PostActionAsync(string path, CancellationToken cancellationToken)
     {

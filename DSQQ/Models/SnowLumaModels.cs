@@ -103,14 +103,86 @@ public sealed class SnowLumaProcess
         }
     }
 
+    // 探测出来的登录 QQ 号（GET /api/processes/{pid}/probe-login）。
+    //
+    // 未注入的进程 uin 恒为字符串 "0"，但探测照样能问出登录的是谁 ——
+    // 这两件事互不相干：探测走的是 QQ 自己的本地登录端口，
+    // 与 SnowLuma 有没有把原生模块挂上去无关。
+    // 由界面填，不参与 JSON 反序列化。
+    [JsonIgnore]
+    public string? ProbedUin { get; set; }
+
+    // 探测出来的昵称。
+    [JsonIgnore]
+    public string? ProbedNickName { get; set; }
+
+    // 已经探过一轮但没问到（这个进程没登录 QQ）。
+    //
+    // 用来把「还没探」和「探过但没有」分开：前者显示 …，后者显示 —。
+    [JsonIgnore]
+    public bool ProbeAttempted { get; set; }
+
     // 表格里的账号列。
     // 未登录时 uin 是字符串 "0"，直接显示会让人以为真有个 0 号 QQ。
-    public string Account => string.IsNullOrWhiteSpace(Uin) || Uin == "0" ? "—" : Uin;
+    // 进程自己没报 uin 时用探测结果补上。
+    //
+    // 不加「探测」之类的后缀：同一行的「已加载」列本来就是 —，
+    // 读者一眼能看出这个号不是从注入链路来的；页脚还有一句话专门说明。
+    public string Account
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Uin) && Uin != "0")
+            {
+                return Uin;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ProbedUin))
+            {
+                return ProbedUin;
+            }
+
+            return ProbeAttempted ? "—" : "…";
+        }
+    }
 
     // 布尔列用符号显示，比 True/False 好扫。
     public string InjectedText => Injected ? "✓" : "—";
 
     public string LoggedInText => LoggedIn ? "✓" : "—";
+}
+
+// GET /api/processes/{pid}/probe-login 的响应。
+//
+// ⚠️ 探测不到时返回的是 **HTTP 200 + {"info":null}**，不是 404 ——
+// 按状态码判断会把「这个进程没登录 QQ」当成接口出错。
+// 另外这条接口**不需要注入**：它去问 QQ 自己的本地登录端口（4301/4303/…）。
+public sealed class SnowLumaProbeLoginResponse
+{
+    [JsonPropertyName("info")]
+    public SnowLumaProbeLoginInfo? Info { get; set; }
+}
+
+// 探测出来的登录信息。
+public sealed class SnowLumaProbeLoginInfo
+{
+    // 问到的登录端口。
+    [JsonPropertyName("port")]
+    public int Port { get; set; }
+
+    // QQ 号；没问到是 "0"。
+    [JsonPropertyName("uin")]
+    public string? Uin { get; set; }
+
+    // 昵称。
+    //
+    // ⚠️ 字段名是 nickName（大写 N），不是 nickname —— 别和 SnowLumaAccount 那个搞混。
+    [JsonPropertyName("nickName")]
+    public string? NickName { get; set; }
+
+    // 是否确知身份。
+    [JsonPropertyName("identityKnown")]
+    public bool IdentityKnown { get; set; }
 }
 
 // /api/qq-list 的响应：可用的 QQ 账号。

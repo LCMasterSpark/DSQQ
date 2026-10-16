@@ -111,7 +111,7 @@
                             <DataGridTextColumn Header="进程" Binding="{Binding Name}" Width="120" />
                             <DataGridTextColumn Header="已加载" Binding="{Binding InjectedText}" Width="80" />
                             <DataGridTextColumn Header="已登录" Binding="{Binding LoggedInText}" Width="80" />
-                            <DataGridTextColumn Header="QQ 号" Binding="{Binding Account}" Width="130" />
+                            <DataGridTextColumn Header="QQ 号" Binding="{Binding Account}" Width="150" />
                             <DataGridTextColumn Header="方式" Binding="{Binding Method}" Width="150" />
                             <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="*" />
                         </DataGrid.Columns>
@@ -131,7 +131,7 @@
                     </StackPanel>
 
                     <TextBlock Grid.Row="3" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap"
-                               Text="若「已加载」为假但 QQ 正在运行，说明原生组件没能挂上，属于 SnowLuma 侧的问题 —— 请查看它日志里的 [Hook] 行。" />
+                               Text="「QQ 号」一列对没加载的进程也会显示：那是直接问 QQ 进程的登录端口得来的，只说明这个进程登录的是谁，不代表它已经被加载。问不到就是该进程还没登录 QQ。若「已加载」为假但 QQ 正在运行，说明原生组件没能挂上，属于 SnowLuma 侧的问题 —— 请查看它日志里的 [Hook] 行。" />
                 </Grid>
             </TabItem>
 

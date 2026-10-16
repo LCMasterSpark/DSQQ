@@ -275,9 +275,12 @@ public sealed class SnowLumaApiClientTests
     }
 
     [Fact]
-    public async Task 未登录账号的_uin_零应显示为破折号()
+    public async Task 未登录账号的_uin_零不应直接显示出来()
     {
         // 未登录时服务端回的是字符串 "0"，直接显示会让人以为真有个 0 号 QQ。
+        //
+        // 显示成什么取决于探测跑没跑过：刚反序列化出来是"还不知道"（…），
+        // 探过一轮没探到才是 —。两种状态的区分在 SnowLumaProcessDisplayTests 里。
         using var server = new StubHttpServer
         {
             Routes = { ["/api/processes"] = """{"list":[{"pid":524,"name":"QQ.exe","uin":"0"}]}""" },
@@ -286,7 +289,9 @@ public sealed class SnowLumaApiClientTests
 
         var processed = await client.GetProcessesAsync();
 
-        Assert.Equal("—", Assert.Single(processed).Account);
+        var process = Assert.Single(processed);
+        Assert.NotEqual("0", process.Account);
+        Assert.Equal("…", process.Account);
     }
 
     [Fact]
@@ -713,5 +718,41 @@ public sealed class SnowLumaApiClientTests
 
         Assert.False(result?.Success);
         Assert.Equal("当前密码不正确", result!.Message);
+    }
+
+    // ── 探测登录 QQ 号 ──
+
+    [Fact]
+    public async Task 探测应打到_probe_login_路由并解出_info()
+    {
+        using var server = new StubHttpServer
+        {
+            ResponseBody = """{"info":{"port":4303,"uin":"1416935939","nickName":"秋霜玉","identityKnown":true}}""",
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+        client.ImportToken("tok");
+
+        var info = await client.ProbeLoginAsync(524);
+
+        Assert.NotNull(info);
+        Assert.Equal("1416935939", info.Uin);
+        Assert.Equal("秋霜玉", info.NickName);
+        Assert.Equal("/api/processes/524/probe-login", server.RequestPaths[^1]);
+        Assert.Equal("Bearer tok", server.LastAuthorization);
+    }
+
+    [Fact]
+    public async Task 探不到时应回_null_而不是报错()
+    {
+        // 真实行为是 HTTP 200 + {"info":null} —— 未登录的进程就是这样。
+        // 按状态码判断会把"这个进程没登录 QQ"当成接口出错。
+        using var server = new StubHttpServer
+        {
+            ResponseBody = """{"info":null}""",
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+        client.ImportToken("tok");
+
+        Assert.Null(await client.ProbeLoginAsync(31388));
     }
 }
