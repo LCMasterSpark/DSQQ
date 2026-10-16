@@ -68,8 +68,10 @@ public sealed class SnowLumaSettings
     // WebUI 密码的 DPAPI 密文；仅本机当前用户可解密。
     public string? WebUiPasswordProtected { get; set; }
 
-    // WebUI 会话 Cookie 的 DPAPI 密文，用于免重复登录。
-    public string? SessionCookieProtected { get; set; }
+    // WebUI 会话 token 的 DPAPI 密文，用于免重复登录。
+    // 早期版本存的是 Cookie，但那个 Cookie 只对 /avatar 有效、调 API 一律 401，
+    // 所以改名成 token —— 老值本来就没起过作用，不存在迁移问题。
+    public string? SessionTokenProtected { get; set; }
 }
 
 // 机器人账号相关设置。

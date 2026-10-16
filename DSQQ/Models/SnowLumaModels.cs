@@ -3,16 +3,27 @@ using System.Text.Json.Serialization;
 
 namespace DSQQ.Models;
 
-// SnowLuma /api/status 的响应（只取界面需要的字段）。
+// SnowLuma /api/status 的响应。
+//
+// ⚠️ 实测它的**完整**响应就是 `{"status":"running"}` —— 既没有 version 也没有 accounts。
+// 早先这里建模成 {version, accounts}，于是那两个属性永远是空的，
+// 概览里一直显示「版本: 未知」「已登录账号: （无）」。账号信息要用 /api/qq-list。
 public sealed class SnowLumaStatus
 {
-    // 运行版本。
-    [JsonPropertyName("version")]
-    public string? Version { get; set; }
+    // 运行状态：running。
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
+}
 
-    // 已登录账号列表。
-    [JsonPropertyName("accounts")]
-    public List<SnowLumaAccount> Accounts { get; set; } = [];
+// /api/processes 的响应外壳。
+//
+// 顶层是 {"list":[…]} 而不是裸数组 —— 早先按 List<SnowLumaProcess> 直接反序列化，
+// 抛 JsonException 后被 SafeDeserialize 吞成 null，于是进程列表**恒为空**，
+// 界面显示「QQ 进程 0 个」。包一层外壳才是对的。
+public sealed class SnowLumaProcessList
+{
+    [JsonPropertyName("list")]
+    public List<SnowLumaProcess> List { get; set; } = [];
 }
 
 // 一个已登录的 QQ 账号。
@@ -88,6 +99,15 @@ public sealed class SnowLumaProcess
             return $"{name} · PID {Pid} · {state}";
         }
     }
+
+    // 表格里的账号列。
+    // 未登录时 uin 是字符串 "0"，直接显示会让人以为真有个 0 号 QQ。
+    public string Account => string.IsNullOrWhiteSpace(Uin) || Uin == "0" ? "—" : Uin;
+
+    // 布尔列用符号显示，比 True/False 好扫。
+    public string InjectedText => Injected ? "✓" : "—";
+
+    public string LoggedInText => LoggedIn ? "✓" : "—";
 }
 
 // /api/qq-list 的响应：可用的 QQ 账号。
@@ -136,16 +156,31 @@ public sealed class SnowLumaAdapter
     public string? Detail { get; set; }
 }
 
-// 单个账号的 OneBot 配置（GET/POST /api/config/:uin）。
+// GET /api/config/:uin 的响应外壳。
+//
+// 实测响应是 {"config":{networks,statusCommand,historySync,notifications}} ——
+// **有一层 config 包装**。早先按裸对象直接反序列化，Networks 恒为 null，
+// 界面于是显示"这个账号还没有任何接入点"，而实际上 3000/3001 都配好了。
+//
+// 这是本项目第四次踩同一类坑（活跃度的 {ok,activity}、进程的 {list}、
+// 状态的裸 {status}）—— 凡是"读回来是空的"，先怀疑外壳。
+public sealed class SnowLumaOneBotConfigResponse
+{
+    [JsonPropertyName("config")]
+    public SnowLumaOneBotConfig? Config { get; set; }
+}
+
+// 单个账号的 OneBot 配置。
+// GET 时藏在上面那层 config 里；POST 时直接作为请求体（不加包装）。
 //
 // 用 JsonExtensionData 兜底：POST 是**整体覆盖**语义，凡是我没建模的字段
 // 都会在回写时被清掉。把读到的未知字段原样留着，才不会一改配置就丢东西
 //（配额那次就是漏了字段，导致 warnMessage 被清空）。
 public sealed class SnowLumaOneBotConfig
 {
-    [JsonPropertyName("uin")]
-    public string? Uin { get; set; }
-
+    // 注意：这里**没有** uin 字段。GET 的响应是 {"config":{networks,statusCommand,…}}，
+    // 里面的 config 就是配置文件的原文，不含 uin；而 POST 的 body 直接就是这份 config，
+    // 服务端会拿 assertValidOneBotConfig(body) 校验 —— 多带未知字段有被拒的风险。
     [JsonPropertyName("networks")]
     public SnowLumaNetworks? Networks { get; set; }
 

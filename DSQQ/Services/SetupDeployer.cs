@@ -30,10 +30,10 @@ public sealed class SetupDeployer
         _timeout = timeout ?? TimeSpan.FromSeconds(10);
     }
 
-    // 本次配置过程中拿到的新会话 Cookie（DPAPI 密文）。
+    // 本次配置过程中拿到的新会话 token（DPAPI 密文）。
     // 调用方应当把它写回配置，下次就不必再登录一次。
     // 为 null 表示本次没有产生新会话。
-    public string? RefreshedSessionCookie { get; private set; }
+    public string? RefreshedSessionToken { get; private set; }
 
     // 造一个**已登录**的 SnowLuma 客户端。
     //
@@ -47,11 +47,11 @@ public sealed class SetupDeployer
         var client = new SnowLumaApiClient(
             ServiceEndpoints.BuildLoopbackUri(_config.SnowLuma.PreferredWebUiPort), _timeout);
 
-        // 1) 复用过期的会话。
-        var savedCookie = SecureStore.Unprotect(_config.SnowLuma.SessionCookieProtected);
-        if (!string.IsNullOrWhiteSpace(savedCookie))
+        // 1) 复用之前保存的会话 token。
+        var savedToken = SecureStore.Unprotect(_config.SnowLuma.SessionTokenProtected);
+        if (!string.IsNullOrWhiteSpace(savedToken))
         {
-            client.ImportCookies(savedCookie);
+            client.ImportToken(savedToken);
 
             // 用一个必然存在的受保护端点验证会话还有效。
             var probe = await client.GetQqListAsync(cancellationToken).ConfigureAwait(false);
@@ -72,8 +72,8 @@ public sealed class SetupDeployer
         var login = await client.LoginAsync(password, null, cancellationToken).ConfigureAwait(false);
         if (login.Outcome == LoginOutcome.Success)
         {
-            var cookie = client.ExportCookies();
-            RefreshedSessionCookie = string.IsNullOrEmpty(cookie) ? null : SecureStore.Protect(cookie);
+            var token = client.ExportToken();
+            RefreshedSessionToken = string.IsNullOrEmpty(token) ? null : SecureStore.Protect(token);
         }
 
         return client;
@@ -383,7 +383,7 @@ public sealed class SetupDeployer
         }
 
         // 已经跑起来了却读不到 → 先看 DSQQ 自己有没有这个 WebUI 的会话。
-        var hasSession = !string.IsNullOrWhiteSpace(_config.SnowLuma.SessionCookieProtected);
+        var hasSession = !string.IsNullOrWhiteSpace(_config.SnowLuma.SessionTokenProtected);
         var hasPassword = !string.IsNullOrWhiteSpace(_config.SnowLuma.WebUiPasswordProtected);
 
         if (!hasSession && !hasPassword)

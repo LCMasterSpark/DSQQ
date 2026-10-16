@@ -5,81 +5,206 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
              mc:Ignorable="d"
-             d:DesignHeight="600" d:DesignWidth="1000">
+             d:DesignHeight="700" d:DesignWidth="1100">
     <!--
-        SnowLuma 页。
-        登录态、QQ 进程注入状态、OneBot 连接配置。
-        合规提示：协议同意与扫码登录必须在 SnowLuma 自己的界面完成，本页只做只读展示与状态提示。
+        SnowLuma 控制台。
+        目标：日常不需要再打开 SnowLuma 的网页。
+
+        分区：
+           概览        —— 版本、账号、WebUI 登录态
+           QQ 账号     —— 进程与注入状态、加载/卸载、接入点（OneBot）连接情况
+           OneBot 配置 —— HTTP / WS 服务的读取与写入
+
+        注意：协议同意与 QQ 扫码必须在 SnowLuma 自己的界面完成 ——
+        那是 QQ 客户端的登录流程，本程序无法代劳，只能把你送到那里。
     -->
     <Grid Margin="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 登录区 -->
-        <Border Grid.Row="0" Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+        <!-- ══ WebUI 登录条（紧凑，常驻）══ -->
+        <Border Grid.Row="0" Padding="12" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
             <StackPanel>
-                <TextBlock Text="WebUI 登录" FontWeight="SemiBold" FontSize="14" />
-                <TextBlock Margin="0,4,0,0" Opacity="0.65" TextWrapping="Wrap"
-                           Text="密码以 Windows DPAPI 加密后保存在本机配置中，只能由当前用户解密。登录状态（Cookie）同样会被保存，用于免重复登录。" />
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="WebUI 登录" FontWeight="SemiBold" VerticalAlignment="Center" />
 
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                    <TextBlock Text="密码" VerticalAlignment="Center" />
-                    <PasswordBox x:Name="PasswordBox" Width="220" Margin="8,0,0,0" />
+                    <TextBlock Text="密码" Margin="16,0,0,0" VerticalAlignment="Center" />
+                    <PasswordBox x:Name="PasswordBox" Width="180" Margin="8,0,0,0" />
 
                     <TextBlock Text="验证码" Margin="12,0,0,0" VerticalAlignment="Center"
                                ToolTip="仅当账号启用两步验证时填写" />
-                    <TextBox x:Name="TotpBox" Width="90" Margin="8,0,0,0" />
+                    <TextBox x:Name="TotpBox" Width="80" Margin="8,0,0,0" />
 
-                    <Button x:Name="LoginButton" Content="登录" Width="90" Height="30" Margin="12,0,0,0"
+                    <Button x:Name="LoginButton" Content="登录" Width="80" Height="28" Margin="12,0,0,0"
                             Style="{StaticResource MahApps.Styles.Button.Flat}" Click="OnLoginClick" />
-                    <Button x:Name="LogoutButton" Content="退出登录" Width="100" Height="30" Margin="8,0,0,0"
+                    <Button x:Name="LogoutButton" Content="退出登录" Width="90" Height="28" Margin="8,0,0,0"
                             Click="OnLogoutClick" />
+                    <Button x:Name="RefreshButton" Content="全部刷新" Width="90" Height="28" Margin="8,0,0,0"
+                            Click="OnRefreshClick" />
                 </StackPanel>
 
-                <TextBlock x:Name="LoginStatusText" Margin="0,10,0,0" TextWrapping="Wrap" Opacity="0.75" />
+                <TextBlock x:Name="LoginStatusText" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.75" />
             </StackPanel>
         </Border>
 
-        <!-- 概览 -->
-        <Border Grid.Row="1" Margin="0,12,0,0" Padding="14" CornerRadius="4"
-                Background="{DynamicResource DsqqSurface}">
-            <StackPanel>
-                <TextBlock Text="概览" FontWeight="SemiBold" FontSize="14" />
-                <TextBlock x:Name="OverviewText" Margin="0,8,0,0" TextWrapping="Wrap"
-                           FontFamily="Consolas, Microsoft YaHei UI" LineHeight="19" Text="尚未采集。" />
-                <Button x:Name="RefreshButton" Content="刷新" Width="90" Height="28" Margin="0,10,0,0"
-                        HorizontalAlignment="Left" Click="OnRefreshClick" />
-                <Button x:Name="OpenLogsButton" Content="打开日志目录" Width="120" Height="28" Margin="0,8,0,0"
-                        HorizontalAlignment="Left" Click="OnOpenLogsClick"
-                        ToolTip="注入失败或收不到消息时，先看这里日志中的 [Hook] 行" />
-            </StackPanel>
-        </Border>
+        <!-- ══ 内层分页 ══ -->
+        <TabControl Grid.Row="1" x:Name="SnowLumaTabs" Margin="0,12,0,0">
 
-        <!-- QQ 进程与注入 -->
-        <Border Grid.Row="2" Margin="0,12,0,0" Padding="14" CornerRadius="4"
-                Background="{DynamicResource DsqqSurface}">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="QQ 进程与注入状态" FontWeight="SemiBold" FontSize="14" />
-                <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,0" Opacity="0.6" TextWrapping="Wrap"
-                           Text="注入由 SnowLuma 使用原生组件完成。若此处显示未注入或收不到消息，请查看 SnowLuma 自身日志中的 [Hook] 行 —— 那属于上游问题，与本面板无关。" />
-                <DataGrid x:Name="ProcessGrid" Margin="0,8,0,0" AutoGenerateColumns="False" IsReadOnly="True"
-                          HeadersVisibility="Column" CanUserAddRows="False" GridLinesVisibility="Horizontal">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
-                        <DataGridTextColumn Header="进程" Binding="{Binding Name}" Width="140" />
-                        <DataGridTextColumn Header="注入" Binding="{Binding Loaded}" Width="70" />
-                        <DataGridTextColumn Header="QQ 号" Binding="{Binding Uin}" Width="120" />
-                        <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="*" />
-                    </DataGrid.Columns>
-                </DataGrid>
-            </DockPanel>
-        </Border>
+            <!-- ── 概览 ── -->
+            <TabItem Header="概览">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="3" x:Name="HintText" Margin="2,10,0,0" Opacity="0.55"
+                    <TextBlock Grid.Row="0" x:Name="OverviewText" TextWrapping="Wrap"
+                               FontFamily="Consolas, Microsoft YaHei UI" LineHeight="20"
+                               Text="尚未采集。" />
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button x:Name="OpenWebUiButton" Content="打开 SnowLuma 控制台" Width="170" Height="28"
+                                Click="OnOpenWebUiClick"
+                                ToolTip="协议同意与 QQ 扫码只能在它自己的界面完成" />
+                        <Button x:Name="OpenLogsButton" Content="打开日志目录" Width="120" Height="28" Margin="8,0,0,0"
+                                Click="OnOpenLogsClick"
+                                ToolTip="注入失败或收不到消息时，先看这里日志中的 [Hook] 行" />
+                    </StackPanel>
+
+                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="12" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurfaceAlt}">
+                        <StackPanel>
+                            <TextBlock Text="接入点状态（来自 /api/connections）" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,4,0,0" Opacity="0.65" TextWrapping="Wrap"
+                                       Text="这一栏回答的是「桥接到底连上没有」：ws-default 后面显示「1 个客户端」就说明 qq-bridge 已经接上来了。" />
+                            <TextBlock x:Name="ConnectionsText" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI" LineHeight="19" Text="（未采集）" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ── QQ 账号 ── -->
+            <TabItem Header="QQ 账号">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.7" LineHeight="19"
+                               Text="SnowLuma 通过把原生组件加载进 QQ 进程来工作。列表里每个进程的「已加载」表示组件已注入，「已登录」表示那个进程里的 QQ 已经登录。要让某个账号生效，选中它点「加载」。" />
+
+                    <DataGrid Grid.Row="1" x:Name="ProcessGrid" Margin="0,10,0,0" AutoGenerateColumns="False"
+                              IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False"
+                              CanUserDeleteRows="False" GridLinesVisibility="Horizontal"
+                              SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
+                            <DataGridTextColumn Header="进程" Binding="{Binding Name}" Width="120" />
+                            <DataGridTextColumn Header="已加载" Binding="{Binding InjectedText}" Width="80" />
+                            <DataGridTextColumn Header="已登录" Binding="{Binding LoggedInText}" Width="80" />
+                            <DataGridTextColumn Header="QQ 号" Binding="{Binding Account}" Width="130" />
+                            <DataGridTextColumn Header="方式" Binding="{Binding Method}" Width="150" />
+                            <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button x:Name="LoadProcessButton" Content="加载选中" Width="100" Height="28"
+                                Click="OnLoadProcessClick"
+                                ToolTip="把原生组件注入选中的 QQ 进程，让这个账号开始工作" />
+                        <Button x:Name="UnloadProcessButton" Content="卸载选中" Width="100" Height="28" Margin="8,0,0,0"
+                                Click="OnUnloadProcessClick" />
+                        <Button x:Name="RefreshProcessButton" Content="重新探测" Width="100" Height="28" Margin="8,0,0,0"
+                                Style="{StaticResource MahApps.Styles.Button.Flat}"
+                                Click="OnRefreshProcessClick" />
+                        <TextBlock x:Name="ProcessHintText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                   Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="3" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap"
+                               Text="若「已加载」为假但 QQ 正在运行，说明原生组件没能挂上，属于 SnowLuma 侧的问题 —— 请查看它日志里的 [Hook] 行。" />
+                </Grid>
+            </TabItem>
+
+            <!-- ── OneBot 配置 ── -->
+            <TabItem Header="OneBot 配置">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <TextBlock Text="账号" VerticalAlignment="Center" />
+                        <ComboBox x:Name="AccountCombo" Width="220" Margin="8,0,0,0"
+                                  SelectionChanged="OnAccountChanged" />
+                        <Button x:Name="ReloadConfigButton" Content="重新读取" Width="100" Height="28" Margin="8,0,0,0"
+                                Style="{StaticResource MahApps.Styles.Button.Flat}"
+                                Click="OnReloadConfigClick" />
+                    </StackPanel>
+
+                    <!-- HTTP 服务 -->
+                    <Border Grid.Row="1" Margin="0,12,0,0" Padding="12" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="HTTP 服务（桥接用它发消息）" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="监听地址" VerticalAlignment="Center" Width="70" />
+                                <TextBox x:Name="HttpHostBox" Width="140" />
+                                <TextBlock Text="端口" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                <TextBox x:Name="HttpPortBox" Width="80" Margin="8,0,0,0" />
+                                <TextBlock Text="消息格式" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                <ComboBox x:Name="HttpFormatCombo" Width="110" Margin="8,0,0,0" />
+                                <CheckBox x:Name="HttpReportSelfCheck" Content="上报自己发的消息"
+                                          Margin="16,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- WS 服务 -->
+                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="12" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="WebSocket 服务（桥接用它收事件）" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="监听地址" VerticalAlignment="Center" Width="70" />
+                                <TextBox x:Name="WsHostBox" Width="140" />
+                                <TextBlock Text="端口" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                <TextBox x:Name="WsPortBox" Width="80" Margin="8,0,0,0" />
+                                <TextBlock Text="角色" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                <ComboBox x:Name="WsRoleCombo" Width="130" Margin="8,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="SaveConfigButton" Content="保存配置" Width="110" Height="30"
+                                Click="OnSaveConfigClick" />
+                        <Button x:Name="EnsureOneBotButton" Content="一键补全所需端口" Width="160" Height="30"
+                                Margin="8,0,0,0" Click="OnEnsureOneBotClick"
+                                ToolTip="确保 HTTP 3000 与 WS 3001 存在（桥接的默认指向就是这两个）" />
+                        <TextBlock x:Name="ConfigHintText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                   Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="4" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap"
+                               Text="保存是整体覆盖语义：本页读到的其它字段会原样写回，但如果你手工改过 SnowLuma 的配置文件，建议先点「重新读取」。改动通常需要重新加载账号（或重启 SnowLuma）才生效。" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <TextBlock Grid.Row="2" x:Name="HintText" Margin="2,10,0,0" Opacity="0.55"
                    TextTrimming="CharacterEllipsis" Text="—" />
     </Grid>
 </UserControl>

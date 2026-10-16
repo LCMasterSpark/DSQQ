@@ -349,13 +349,13 @@ public partial class MainWindow : Window
             results.AddRange(await deployer.RunAsync(null, _shutdown.Token).ConfigureAwait(true));
 
             // 登录产生的新会话要留下，下次就不必再登一次。
-            if (deployer.RefreshedSessionCookie is not null)
+            if (deployer.RefreshedSessionToken is not null)
             {
-                config.SnowLuma.SessionCookieProtected = deployer.RefreshedSessionCookie;
+                config.SnowLuma.SessionTokenProtected = deployer.RefreshedSessionToken;
             }
 
             // 只有真改了东西才落盘，避免无谓写文件。
-            if (generated || deployer.RefreshedSessionCookie is not null)
+            if (generated || deployer.RefreshedSessionToken is not null)
             {
                 AppConfigStore.Save(config);
             }

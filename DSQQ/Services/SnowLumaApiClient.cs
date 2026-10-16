@@ -31,9 +31,14 @@ public enum LoginOutcome
 public readonly record struct LoginResult(LoginOutcome Outcome, string Message);
 
 // SnowLuma WebUI（默认 127.0.0.1:5099）的 HTTP 客户端。
-// 鉴权方式：POST /api/login 返回一次性 token，同时写入会话 Cookie；
-// 后续请求靠 Cookie 维持。这里用 System.Net.CookieContainer 自动处理，
-// 并把 Cookie 持久化到本地（DPAPI 加密），实现"登录一次后免登录"。
+//
+// 鉴权方式（以实测为准）：POST /api/login 返回 {success, token}，
+// 之后所有请求带 `Authorization: Bearer <token>`。
+//
+// ⚠️ 不要改用 Cookie。登录响应里确实有一个 set-cookie
+// （snowluma_avatar_session），但它的 Path 是 **/avatar** —— 那是给头像图片用的。
+// 拿它去访问数据接口一律 401，表现是"登录成功、之后什么都读不到"。
+// token 会被持久化到本地（DPAPI 加密），实现"登录一次后免登录"。
 public sealed class SnowLumaApiClient : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -42,8 +47,10 @@ public sealed class SnowLumaApiClient : IDisposable
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private readonly CookieContainer _cookies = new();
     private readonly HttpClient _http;
+
+    // 当前会话 token；未登录时为 null。
+    private string? _token;
 
     // 初始化客户端。
     // 参数 baseUri：WebUI 基地址，例如 http://127.0.0.1:5099。
@@ -54,13 +61,7 @@ public sealed class SnowLumaApiClient : IDisposable
 
         BaseUri = baseUri;
 
-        var handler = new HttpClientHandler
-        {
-            CookieContainer = _cookies,
-            UseCookies = true,
-        };
-
-        _http = new HttpClient(handler)
+        _http = new HttpClient()
         {
             BaseAddress = baseUri,
             Timeout = timeout ?? TimeSpan.FromSeconds(10),
@@ -71,8 +72,8 @@ public sealed class SnowLumaApiClient : IDisposable
     // WebUI 基地址。
     public Uri BaseUri { get; }
 
-    // 当前是否已登录（依据会话 Cookie 是否存在）。
-    public bool HasSession => _cookies.GetCookies(BaseUri).Count > 0;
+    // 当前是否已登录（依据会话 token 是否存在）。
+    public bool HasSession => !string.IsNullOrEmpty(_token);
 
     // 登录。
     // 参数 password：WebUI 密码。
@@ -116,6 +117,10 @@ public sealed class SnowLumaApiClient : IDisposable
 
             if (result?.Success == true)
             {
+                // 把 token 留下来 —— 后续所有 API 调用都要靠它。
+                // 登录响应里那个 snowluma_avatar_session cookie 只对 /avatar 有效，
+                // 拿它去访问数据接口一律 401（实测确认），所以这里不能靠 cookie。
+                SetToken(result.Token);
                 return new LoginResult(LoginOutcome.Success, "登录成功。");
             }
 
@@ -146,7 +151,7 @@ public sealed class SnowLumaApiClient : IDisposable
             // 登出失败也继续清本地会话。
         }
 
-        _cookies.GetCookies(BaseUri).ToList().ForEach(c => c.Expired = true);
+        SetToken(null);
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
@@ -157,13 +162,22 @@ public sealed class SnowLumaApiClient : IDisposable
     // 读取 QQ 进程与注入状态。
     public async Task<IReadOnlyList<SnowLumaProcess>> GetProcessesAsync(CancellationToken cancellationToken = default)
     {
-        var list = await GetAsync<List<SnowLumaProcess>>("/api/processes", cancellationToken).ConfigureAwait(false);
-        return list ?? [];
+        // 顶层是 {"list":[…]}；按裸数组解析会抛 JsonException 被吞成 null → 列表恒为空。
+        var wrapped = await GetAsync<SnowLumaProcessList>("/api/processes", cancellationToken).ConfigureAwait(false);
+        return wrapped?.List ?? [];
     }
 
     // 读取指定账号的 OneBot 配置。
-    public Task<SnowLumaOneBotConfig?> GetOneBotConfigAsync(string uin, CancellationToken cancellationToken = default)
-        => GetAsync<SnowLumaOneBotConfig>($"/api/config/{uin}", cancellationToken);
+    //
+    // ⚠️ 响应有 config 包装层（{"config":{…}}），必须解一层 ——
+    // 直接按裸对象解析会让 Networks 恒为 null，界面误报"还没有任何接入点"。
+    public async Task<SnowLumaOneBotConfig?> GetOneBotConfigAsync(
+        string uin, CancellationToken cancellationToken = default)
+    {
+        var response = await GetAsync<SnowLumaOneBotConfigResponse>($"/api/config/{uin}", cancellationToken)
+            .ConfigureAwait(false);
+        return response?.Config;
+    }
 
     // 保存指定账号的 OneBot 配置。
     //
@@ -237,42 +251,23 @@ public sealed class SnowLumaApiClient : IDisposable
         }
     }
 
-    // 导出会话 Cookie，供持久化使用。
-    // 返回：形如 name=value; name2=value2 的字符串；无会话时为空串。
-    public string ExportCookies()
+    // 导出会话 token，供持久化使用；未登录时为空串。
+    public string ExportToken() => _token ?? string.Empty;
+
+    // 导入之前持久化的会话 token。
+    public void ImportToken(string? token) => SetToken(token);
+
+    // 设置会话 token，并同步到 HttpClient 的默认请求头。
+    //
+    // 用 DefaultRequestHeaders 而不是每个方法各自加头：调用点有十几处，
+    // 漏掉任何一处都会得到一个"静默 401"，而那种错误很难从界面上看出来。
+    private void SetToken(string? token)
     {
-        var cookies = _cookies.GetCookies(BaseUri);
-        return cookies.Count == 0
-            ? string.Empty
-            : string.Join("; ", cookies.Cast<System.Net.Cookie>().Select(c => $"{c.Name}={c.Value}"));
-    }
+        _token = string.IsNullOrWhiteSpace(token) ? null : token;
 
-    // 导入之前持久化的会话 Cookie。
-    // 参数 cookieHeader：由 ExportCookies 生成的字符串。
-    public void ImportCookies(string cookieHeader)
-    {
-        if (string.IsNullOrWhiteSpace(cookieHeader))
-        {
-            return;
-        }
-
-        foreach (var pair in cookieHeader.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var index = pair.IndexOf('=');
-            if (index <= 0)
-            {
-                continue;
-            }
-
-            try
-            {
-                _cookies.Add(BaseUri, new System.Net.Cookie(pair[..index], pair[(index + 1)..], "/", BaseUri.Host));
-            }
-            catch (System.Net.CookieException)
-            {
-                // 单个 Cookie 非法时跳过，不影响其余。
-            }
-        }
+        _http.DefaultRequestHeaders.Authorization = _token is null
+            ? null
+            : new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
     }
 
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)
@@ -315,6 +310,10 @@ public sealed class SnowLumaApiClient : IDisposable
     {
         [JsonPropertyName("success")]
         public bool Success { get; set; }
+
+        // 登录成功后拿到的会话 token，后续请求靠它鉴权。
+        [JsonPropertyName("token")]
+        public string? Token { get; set; }
 
         [JsonPropertyName("message")]
         public string? Message { get; set; }
