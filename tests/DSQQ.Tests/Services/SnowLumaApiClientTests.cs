@@ -439,6 +439,103 @@ public sealed class SnowLumaApiClientTests
         Assert.Contains("debug", server.LastRequestBody, StringComparison.Ordinal);
     }
 
+    // ── 系统与存储 ──
+
+    [Fact]
+    public async Task 系统信息应解析出机器与负载字段()
+    {
+        using var server = new StubServer
+        {
+            Routes =
+            {
+                ["/api/system"] = """{"hostname":"LAPTOP","platform":"win32","archLabel":"x86_64","release":"10.0.26200","distro":"Windows 11 Pro","uptime":27497.9,"processUptime":26061.2,"nodeVersion":"v22.13.0","cpu":{"model":"Intel","cores":20,"average":17.2},"memory":{"total":34359738368,"used":17179869184,"usagePercent":50}}""",
+            },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var info = await client.GetSystemInfoAsync();
+
+        Assert.NotNull(info);
+        Assert.Equal("Windows 11 Pro", info!.Distro);
+        Assert.Equal(20, info.Cpu?.Cores);
+        Assert.Equal(50, info.Memory?.UsagePercent);
+    }
+
+    [Fact]
+    public async Task 存储信息应区分已保存值与生效值()
+    {
+        // saved 是用户配置，effective 是算上环境变量后的实际值 ——
+        // 两者不一致时要能在界面上提示"有环境变量覆盖"。
+        using var server = new StubServer
+        {
+            Routes =
+            {
+                ["/api/system/storage"] = """{"settings":{"saved":{"logMaxTotalMb":1024,"logRetainDays":7,"logPerUin":false},"effective":{"logMaxTotalMb":2048,"logRetainDays":7,"logPerUin":false},"envOverrides":["LOG_MAX_TOTAL_MB"]},"snapshot":{"logs":{"state":"healthy","totalBytes":3416553,"fileCount":2,"droppedLines":5},"accounts":[{"uin":"3551510664","nickname":"O.o","online":true,"messagesBytes":6778552,"totalBytes":8228608}],"totals":{"logsBytes":3416553,"accountDataBytes":8228608,"managedBytes":11645161}},"lastCleanup":null}""",
+            },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var storage = await client.GetStorageAsync();
+
+        Assert.NotNull(storage);
+        Assert.Equal(1024, storage!.Settings?.Saved?.LogMaxTotalMb);
+        Assert.Equal(2048, storage.Settings?.Effective?.LogMaxTotalMb);
+        // 丢弃行数不为 0 说明日志被截断过，界面要据此提示调大上限。
+        Assert.Equal(5, storage.Snapshot?.Logs?.DroppedLines);
+        Assert.Equal("O.o", Assert.Single(storage.Snapshot!.Accounts).Nickname);
+        Assert.Equal(11645161, storage.Snapshot.Totals?.ManagedBytes);
+    }
+
+    [Fact]
+    public async Task 保存存储设置应提交三个字段()
+    {
+        using var server = new StubServer { ResponseBody = """{"success":true}""" };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var ok = await client.SaveStorageSettingsAsync(new DSQQ.Models.SnowLumaStorageSettings
+        {
+            LogMaxTotalMb = 512,
+            LogRetainDays = 3,
+            LogPerUin = true,
+        });
+
+        Assert.True(ok);
+
+        var body = server.LastRequestBody;
+        Assert.Contains("logMaxTotalMb", body, StringComparison.Ordinal);
+        Assert.Contains("logRetainDays", body, StringComparison.Ordinal);
+        Assert.Contains("logPerUin", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 更新检查应解析出版本与发布页()
+    {
+        using var server = new StubServer
+        {
+            Routes =
+            {
+                ["/api/update/check"] = """{"current":"1.14.22","latest":"1.15.0","hasUpdate":true,"htmlUrl":"https://github.com/SnowLuma/SnowLuma/releases/tag/v1.15.0"}""",
+            },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var info = await client.CheckUpdateAsync();
+
+        Assert.NotNull(info);
+        Assert.True(info!.HasUpdate);
+        Assert.Equal("1.15.0", info.Latest);
+        Assert.Contains("github.com", info.HtmlUrl!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 清理存储应把失败如实回报()
+    {
+        using var server = new StubServer { StatusCode = 500, ResponseBody = """{"success":false}""" };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        Assert.False(await client.CleanupStorageAsync());
+    }
+
     // ── 极简 HTTP 桩 ──
     //
     // 用 TcpListener 而不是 HttpListener：后者在 Windows 上需要 URL 预留（通常要管理员），

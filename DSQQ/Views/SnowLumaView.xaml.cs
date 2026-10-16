@@ -36,6 +36,9 @@ public partial class SnowLumaView : UserControl
     // 界面是否正在回填控件 —— 回填时不要触发"用户改动了"的副作用。
     private bool _loading;
 
+    // 更新检查拿到的发布页地址（用于「打开发布页」）。
+    private string? _releaseUrl;
+
     public SnowLumaView(AppServices services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -589,6 +592,211 @@ public partial class SnowLumaView : UserControl
         {
             LoginStatusText.Text = $"打开日志目录失败：{ex.Message}";
         }
+    }
+
+    // ── 系统与存储 ──
+
+    // 分页切换时按需加载 —— 系统与存储的数据变化很慢，
+    // 没必要跟着 5 秒的状态轮询一起拉。
+    private async void OnInnerTabChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // 只在事件来自内层 TabControl 本身时处理（子控件冒泡上来的会重复触发）。
+        if (!ReferenceEquals(e.OriginalSource, SnowLumaTabs) || !IsLoaded)
+        {
+            return;
+        }
+
+        if ((SnowLumaTabs.SelectedItem as System.Windows.Controls.TabItem)?.Header as string == "系统")
+        {
+            await LoadSystemAsync();
+        }
+    }
+
+    private async Task LoadSystemAsync()
+    {
+        var info = await _client.GetSystemInfoAsync();
+        var storage = await _client.GetStorageAsync();
+
+        if (info is null && storage is null)
+        {
+            SystemInfoText.Text = _client.HasSession ? "（读不到系统信息）" : "（未登录）";
+            StorageText.Text = "（未登录）";
+            return;
+        }
+
+        if (info is not null)
+        {
+            SystemInfoText.Text =
+                $"主机        : {info.Distro ?? info.Platform ?? "?"}（{info.Hostname ?? "?"}，{info.ArchLabel ?? "?"}）{Environment.NewLine}"
+                + $"内核        : {info.Release ?? "?"}    Node {info.NodeVersion ?? "?"}{Environment.NewLine}"
+                + $"CPU         : {info.Cpu?.Model ?? "?"}（{info.Cpu?.Cores ?? 0} 核，负载 {info.Cpu?.Average ?? 0:0.#}%）{Environment.NewLine}"
+                + $"内存        : {FormatBytes(info.Memory?.Used ?? 0)} / {FormatBytes(info.Memory?.Total ?? 0)}（{info.Memory?.UsagePercent ?? 0:0.#}%）{Environment.NewLine}"
+                + $"主机运行    : {FormatDuration(info.Uptime)}{Environment.NewLine}"
+                + $"SnowLuma 已运行 : {FormatDuration(info.ProcessUptime)}";
+        }
+
+        if (storage is not null)
+        {
+            var lines = new List<string>
+            {
+                $"日志        : {FormatBytes(storage.Snapshot?.Logs?.TotalBytes ?? 0)}（{storage.Snapshot?.Logs?.FileCount ?? 0} 个文件，状态 {storage.Snapshot?.Logs?.State ?? "?"}）",
+            };
+
+            // 被丢弃的行数不为 0 说明日志已经被截断过，排查"日志怎么断了"要看这个。
+            var dropped = storage.Snapshot?.Logs?.DroppedLines ?? 0;
+            if (dropped > 0)
+            {
+                lines.Add($"             其中因超限丢弃 {dropped} 行 —— 想留全就调大日志上限");
+            }
+
+            foreach (var account in storage.Snapshot?.Accounts ?? [])
+            {
+                lines.Add(
+                    $"账号 {account.Uin}（{account.Nickname ?? "?"}，{(account.Online ? "在线" : "离线")}）"
+                    + $"：消息 {FormatBytes(account.MessagesBytes)} + 媒体 {FormatBytes(account.MediaBytes)} = {FormatBytes(account.TotalBytes)}");
+            }
+
+            lines.Add($"受管总量    : {FormatBytes(storage.Snapshot?.Totals?.ManagedBytes ?? 0)}");
+            lines.Add($"上次清理    : {(string.IsNullOrWhiteSpace(storage.LastCleanup) ? "从未" : storage.LastCleanup)}");
+
+            StorageText.Text = string.Join(Environment.NewLine, lines);
+
+            // 回填设置；只读字段（effective）用来提示环境变量是否覆盖了用户值。
+            var saved = storage.Settings?.Saved;
+            if (saved is not null && !LogMaxMbBox.IsFocused && !LogRetainDaysBox.IsFocused)
+            {
+                LogMaxMbBox.Text = saved.LogMaxTotalMb.ToString();
+                LogRetainDaysBox.Text = saved.LogRetainDays.ToString();
+                LogPerUinCheck.IsChecked = saved.LogPerUin;
+            }
+
+            var overrides = storage.Settings?.Effective;
+            StorageHintText.Text = overrides is not null
+                && (overrides.LogMaxTotalMb != saved?.LogMaxTotalMb || overrides.LogRetainDays != saved?.LogRetainDays)
+                ? "注意：实际生效值与环境变量不一致，说明有环境变量覆盖了这里的设置。"
+                : string.Empty;
+        }
+    }
+
+    private async void OnSaveStorageClick(object sender, RoutedEventArgs e)
+    {
+        if (!int.TryParse(LogMaxMbBox.Text.Trim(), out var maxMb) || maxMb < 1)
+        {
+            StorageHintText.Text = "日志上限必须是正整数（MB）。";
+            return;
+        }
+
+        if (!int.TryParse(LogRetainDaysBox.Text.Trim(), out var days) || days < 1)
+        {
+            StorageHintText.Text = "保留天数必须是正整数。";
+            return;
+        }
+
+        var settings = new SnowLumaStorageSettings
+        {
+            LogMaxTotalMb = maxMb,
+            LogRetainDays = days,
+            LogPerUin = LogPerUinCheck.IsChecked == true,
+        };
+
+        var ok = await _client.SaveStorageSettingsAsync(settings);
+        StorageHintText.Text = ok ? "存储设置已保存。" : "保存失败。";
+
+        if (ok)
+        {
+            await LoadSystemAsync();
+        }
+    }
+
+    private async void OnCleanupClick(object sender, RoutedEventArgs e)
+    {
+        var answer = System.Windows.MessageBox.Show(
+            $"按当前保留策略清理过期日志与临时文件？{Environment.NewLine}{Environment.NewLine}"
+            + "只删过期的，不会动账号数据与会话记录。",
+            "确认清理",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            StorageHintText.Text = "已取消。";
+            return;
+        }
+
+        var ok = await _client.CleanupStorageAsync();
+        StorageHintText.Text = ok ? "已清理。" : "清理失败。";
+
+        if (ok)
+        {
+            await LoadSystemAsync();
+        }
+    }
+
+    private async void OnCheckUpdateClick(object sender, RoutedEventArgs e)
+    {
+        UpdateText.Text = "检查中…";
+        var info = await _client.CheckUpdateAsync();
+
+        if (info is null)
+        {
+            UpdateText.Text = "检查失败（网络不通或未登录）。";
+            return;
+        }
+
+        UpdateText.Text = info.HasUpdate
+            ? $"当前 {info.Current} → 有新版本 {info.Latest}"
+            : $"当前 {info.Current}，已是最新";
+
+        _releaseUrl = info.HtmlUrl;
+        OpenReleaseButton.IsEnabled = !string.IsNullOrWhiteSpace(_releaseUrl);
+    }
+
+    private void OnOpenReleaseClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_releaseUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = _releaseUrl, UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            UpdateText.Text = $"打开链接失败：{ex.Message}";
+        }
+    }
+
+    // 字节数按人类可读单位显示。
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = bytes;
+        var unit = 0;
+
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0 ? $"{bytes} B" : $"{value:0.##} {units[unit]}";
+    }
+
+    // 秒数转成"x 天 y 小时 z 分"。
+    private static string FormatDuration(double seconds)
+    {
+        var span = TimeSpan.FromSeconds(Math.Max(0, seconds));
+
+        if (span.TotalDays >= 1)
+        {
+            return $"{(int)span.TotalDays} 天 {span.Hours} 小时";
+        }
+
+        return span.TotalHours >= 1
+            ? $"{(int)span.TotalHours} 小时 {span.Minutes} 分"
+            : $"{(int)span.TotalMinutes} 分 {span.Seconds} 秒";
     }
 
     // ── 日志 ──

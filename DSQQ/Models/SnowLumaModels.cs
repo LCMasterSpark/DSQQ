@@ -321,3 +321,182 @@ public sealed class SnowLumaLogLevels
     [JsonPropertyName("levels")]
     public List<string> Levels { get; set; } = [];
 }
+
+// ── 系统与存储（/api/system、/api/system/storage）──
+
+// GET /api/system 的系统信息（挑界面用得到的字段）。
+public sealed class SnowLumaSystemInfo
+{
+    [JsonPropertyName("hostname")]
+    public string? Hostname { get; set; }
+
+    [JsonPropertyName("platform")]
+    public string? Platform { get; set; }
+
+    [JsonPropertyName("archLabel")]
+    public string? ArchLabel { get; set; }
+
+    [JsonPropertyName("release")]
+    public string? Release { get; set; }
+
+    [JsonPropertyName("distro")]
+    public string? Distro { get; set; }
+
+    // 主机运行秒数。
+    [JsonPropertyName("uptime")]
+    public double Uptime { get; set; }
+
+    // SnowLuma 进程运行秒数。
+    [JsonPropertyName("processUptime")]
+    public double ProcessUptime { get; set; }
+
+    [JsonPropertyName("nodeVersion")]
+    public string? NodeVersion { get; set; }
+
+    [JsonPropertyName("cpu")]
+    public SnowLumaCpuInfo? Cpu { get; set; }
+
+    [JsonPropertyName("memory")]
+    public SnowLumaMemoryInfo? Memory { get; set; }
+}
+
+public sealed class SnowLumaCpuInfo
+{
+    [JsonPropertyName("model")]
+    public string? Model { get; set; }
+
+    [JsonPropertyName("cores")]
+    public int Cores { get; set; }
+
+    // 平均负载百分比。
+    [JsonPropertyName("average")]
+    public double Average { get; set; }
+}
+
+public sealed class SnowLumaMemoryInfo
+{
+    [JsonPropertyName("total")]
+    public long Total { get; set; }
+
+    [JsonPropertyName("used")]
+    public long Used { get; set; }
+
+    [JsonPropertyName("usagePercent")]
+    public double UsagePercent { get; set; }
+}
+
+// GET /api/system/storage 的响应。
+public sealed class SnowLumaStorageInfo
+{
+    [JsonPropertyName("settings")]
+    public SnowLumaStorageSettingsWrapper? Settings { get; set; }
+
+    [JsonPropertyName("snapshot")]
+    public SnowLumaStorageSnapshot? Snapshot { get; set; }
+
+    [JsonPropertyName("lastCleanup")]
+    public string? LastCleanup { get; set; }
+}
+
+// saved 是用户配置值，effective 是算上环境变量后的实际生效值。
+public sealed class SnowLumaStorageSettingsWrapper
+{
+    [JsonPropertyName("saved")]
+    public SnowLumaStorageSettings? Saved { get; set; }
+
+    [JsonPropertyName("effective")]
+    public SnowLumaStorageSettings? Effective { get; set; }
+}
+
+// POST /api/system/storage/settings 的请求体（也是 GET 里的 saved/effective 形状）。
+public sealed class SnowLumaStorageSettings
+{
+    // 日志总量上限（MB）。
+    [JsonPropertyName("logMaxTotalMb")]
+    public int LogMaxTotalMb { get; set; }
+
+    // 日志保留天数。
+    [JsonPropertyName("logRetainDays")]
+    public int LogRetainDays { get; set; }
+
+    // 是否按 QQ 号分文件保留。
+    [JsonPropertyName("logPerUin")]
+    public bool LogPerUin { get; set; }
+}
+
+public sealed class SnowLumaStorageSnapshot
+{
+    [JsonPropertyName("logs")]
+    public SnowLumaLogStorage? Logs { get; set; }
+
+    [JsonPropertyName("accounts")]
+    public List<SnowLumaAccountStorage> Accounts { get; set; } = [];
+
+    [JsonPropertyName("totals")]
+    public SnowLumaStorageTotals? Totals { get; set; }
+}
+
+public sealed class SnowLumaLogStorage
+{
+    [JsonPropertyName("state")]
+    public string? State { get; set; }
+
+    [JsonPropertyName("totalBytes")]
+    public long TotalBytes { get; set; }
+
+    [JsonPropertyName("fileCount")]
+    public int FileCount { get; set; }
+
+    // 因超限被丢弃的行数 —— 排查"日志怎么断了"时看这个。
+    [JsonPropertyName("droppedLines")]
+    public long DroppedLines { get; set; }
+}
+
+public sealed class SnowLumaAccountStorage
+{
+    [JsonPropertyName("uin")]
+    public string? Uin { get; set; }
+
+    [JsonPropertyName("nickname")]
+    public string? Nickname { get; set; }
+
+    [JsonPropertyName("online")]
+    public bool Online { get; set; }
+
+    [JsonPropertyName("messagesBytes")]
+    public long MessagesBytes { get; set; }
+
+    [JsonPropertyName("mediaBytes")]
+    public long MediaBytes { get; set; }
+
+    [JsonPropertyName("totalBytes")]
+    public long TotalBytes { get; set; }
+}
+
+public sealed class SnowLumaStorageTotals
+{
+    [JsonPropertyName("logsBytes")]
+    public long LogsBytes { get; set; }
+
+    [JsonPropertyName("accountDataBytes")]
+    public long AccountDataBytes { get; set; }
+
+    [JsonPropertyName("managedBytes")]
+    public long ManagedBytes { get; set; }
+}
+
+// GET /api/update/check 的响应。
+public sealed class SnowLumaUpdateInfo
+{
+    [JsonPropertyName("current")]
+    public string? Current { get; set; }
+
+    [JsonPropertyName("latest")]
+    public string? Latest { get; set; }
+
+    [JsonPropertyName("hasUpdate")]
+    public bool HasUpdate { get; set; }
+
+    [JsonPropertyName("htmlUrl")]
+    public string? HtmlUrl { get; set; }
+}

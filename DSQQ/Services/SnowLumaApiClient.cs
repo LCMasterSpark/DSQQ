@@ -211,6 +211,52 @@ public sealed class SnowLumaApiClient : IDisposable
         }
     }
 
+    // ── 系统与存储 ──
+
+    // 读取系统信息（主机、CPU、内存、运行时长）。
+    public Task<SnowLumaSystemInfo?> GetSystemInfoAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SnowLumaSystemInfo>("/api/system", cancellationToken);
+
+    // 读取存储占用与日志保留设置。
+    public Task<SnowLumaStorageInfo?> GetStorageAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SnowLumaStorageInfo>("/api/system/storage", cancellationToken);
+
+    // 保存日志保留设置。
+    // 注意端点只有 POST（GET /api/system/storage/settings 返回 404）——
+    // 现有值要从 GetStorageAsync 的 settings.saved 里取。
+    public async Task<bool> SaveStorageSettingsAsync(
+        SnowLumaStorageSettings settings, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        try
+        {
+            using var response = await _http
+                .PostAsync(
+                    "/api/system/storage/settings",
+                    new StringContent(
+                        JsonSerializer.Serialize(settings, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    // 立即清理过期日志与临时文件。
+    public Task<bool> CleanupStorageAsync(CancellationToken cancellationToken = default)
+        => PostActionAsync("/api/system/storage/cleanup", cancellationToken);
+
+    // 检查 SnowLuma 自身是否有新版本。
+    public Task<SnowLumaUpdateInfo?> CheckUpdateAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SnowLumaUpdateInfo>("/api/update/check", cancellationToken);
+
     // 读取最近的日志。
     // 参数 limit：最多取多少条。
     public async Task<IReadOnlyList<SnowLumaLogEntry>> GetLogsAsync(

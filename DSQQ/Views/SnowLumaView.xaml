@@ -51,7 +51,8 @@
         </Border>
 
         <!-- ══ 内层分页 ══ -->
-        <TabControl Grid.Row="1" x:Name="SnowLumaTabs" Margin="0,12,0,0">
+        <TabControl Grid.Row="1" x:Name="SnowLumaTabs" Margin="0,12,0,0"
+                        SelectionChanged="OnInnerTabChanged">
 
             <!-- ── 概览 ── -->
             <TabItem Header="概览">
@@ -237,6 +238,70 @@
 
                     <TextBlock Grid.Row="2" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap"
                                Text="这是 SnowLuma 自己的运行日志（含 [Hook] 注入行与消息收发）。排查完成后记得把级别调回 info —— debug/trace 会明显增加日志量。" />
+                </Grid>
+            </TabItem>
+
+            <!-- ── 系统 ── -->
+            <TabItem Header="系统">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Padding="12" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="运行环境" FontWeight="SemiBold" />
+                            <TextBlock x:Name="SystemInfoText" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI" LineHeight="19"
+                                       Text="（未采集）" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="1" Margin="0,12,0,0" Padding="12" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="存储占用" FontWeight="SemiBold" />
+                            <TextBlock x:Name="StorageText" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI" LineHeight="19"
+                                       Text="（未采集）" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBlock Text="日志上限(MB)" VerticalAlignment="Center" />
+                                <TextBox x:Name="LogMaxMbBox" Width="80" Margin="8,0,0,0" />
+                                <TextBlock Text="保留天数" Margin="14,0,0,0" VerticalAlignment="Center" />
+                                <TextBox x:Name="LogRetainDaysBox" Width="60" Margin="8,0,0,0" />
+                                <CheckBox x:Name="LogPerUinCheck" Content="按账号分文件" Margin="14,0,0,0"
+                                          VerticalAlignment="Center" />
+                                <Button x:Name="SaveStorageButton" Content="保存设置" Width="100" Height="28"
+                                        Margin="14,0,0,0" Click="OnSaveStorageClick" />
+                                <Button x:Name="CleanupButton" Content="立即清理" Width="100" Height="28"
+                                        Margin="8,0,0,0" Click="OnCleanupClick"
+                                        ToolTip="只删过期日志与临时文件，不动账号数据" />
+                            </StackPanel>
+
+                            <TextBlock x:Name="StorageHintText" Margin="0,8,0,0" Opacity="0.7" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="12" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="版本" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock x:Name="UpdateText" VerticalAlignment="Center" Text="（尚未检查）" />
+                                <Button x:Name="CheckUpdateButton" Content="检查更新" Width="100" Height="28"
+                                        Margin="14,0,0,0" Click="OnCheckUpdateClick" />
+                                <Button x:Name="OpenReleaseButton" Content="打开发布页" Width="110" Height="28"
+                                        Margin="8,0,0,0" Click="OnOpenReleaseClick" IsEnabled="False" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Grid.Row="3" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap"
+                               Text="改动日志保留设置会写入 SnowLuma 自己的配置；「立即清理」按保留策略删除过期日志与临时文件。" />
                 </Grid>
             </TabItem>
 
