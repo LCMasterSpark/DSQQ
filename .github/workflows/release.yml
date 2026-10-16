@@ -115,22 +115,45 @@ jobs:
 
       # 便携包：DSQQ + SnowLuma + qq-bridge，解压即用。
       # 这是给最终用户的形态 —— 他只需要面对这一个仓库。
+      #
+      # 诊断安排：这一步同时涉及 Python / Node / pnpm / 网络下载四件事，
+      # 失败时只看到「Process completed with exit code 1」是没法定位的。
+      # 所以把完整输出落盘，并在失败时写进 step summary ——
+      # summary 是渲染在 job 页面里的，公开仓库无需令牌即可查看。
       - name: 构建便携包
         shell: pwsh
         run: |
-          # 先把环境摊开打印：这一步涉及 python / node / pnpm / 网络下载四件事，
-          # 出问题时能少猜一轮。（曾经在一次失败里因为没有这些信息而只能靠推理定位。）
-          Write-Host "--- python ---"
-          python --version
-          Write-Host "--- node ---"
-          node --version
-          Write-Host "--- pnpm ---"
-          pnpm --version
-          (Get-Command pnpm).Source
+          $log = Join-Path $env:RUNNER_TEMP 'portable-build.log'
 
-          # SnowLuma 从它自己的公开 Release 下载（CI 在 GitHub 内网取，很快）；
-          # DSQQ 复用上一步已发布的 self-contained，省一次 170 MB 的发布。
-          python packaging/build-portable.py --dsqq-from publish/self-contained
+          "### 环境" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "``````" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          $envDump = @()
+          foreach ($tool in 'python', 'node', 'pnpm') {
+            $cmd = Get-Command $tool -ErrorAction SilentlyContinue
+            $envDump += if ($cmd) { "$tool -> $($cmd.Source)" } else { "$tool -> 不在 PATH 上" }
+          }
+          $envDump += "cwd -> $(Get-Location)"
+          $envDump | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "``````" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          $envDump | ForEach-Object { Write-Host $_ }
+
+          # 不因单个探测失败而中断：真正的结论来自下面构建脚本的输出。
+          $ErrorActionPreference = 'Continue'
+          python --version *>&1 | Tee-Object -FilePath $log -Append
+          node --version   *>&1 | Tee-Object -FilePath $log -Append
+          pnpm --version   *>&1 | Tee-Object -FilePath $log -Append
+
+          python packaging/build-portable.py --dsqq-from publish/self-contained *>&1 |
+            Tee-Object -FilePath $log -Append
+          $code = $LASTEXITCODE
+
+          if ($code -ne 0) {
+            "### 便携包构建失败（exit $code）" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            "``````text" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            Get-Content $log -Tail 80 | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            "``````" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            exit $code
+          }
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
