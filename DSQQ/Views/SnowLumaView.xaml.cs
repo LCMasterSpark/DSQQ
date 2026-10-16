@@ -297,6 +297,12 @@ public partial class SnowLumaView : UserControl
         await RefreshConnectionsAsync();
         await RefreshOneBotAsync(processes);
 
+        // 日志跟随：勾选时才拉，避免没在看日志的人每 5 秒白拉一次。
+        if (LogFollowCheck.IsChecked == true)
+        {
+            await LoadLogsAsync(scrollToEnd: true);
+        }
+
         HintText.Text = $"最后更新 {DateTime.Now:HH:mm:ss}";
     }
 
@@ -583,6 +589,66 @@ public partial class SnowLumaView : UserControl
         {
             LoginStatusText.Text = $"打开日志目录失败：{ex.Message}";
         }
+    }
+
+    // ── 日志 ──
+
+    // 读取日志与级别并渲染。
+    // 参数 scrollToEnd：是否滚到底部（跟随模式要，手动刷新不必）。
+    private async Task LoadLogsAsync(bool scrollToEnd)
+    {
+        // 级别只在第一次或用户要求时重取：它是服务端状态，每次刷新都拉没必要。
+        if (LogLevelCombo.ItemsSource is null)
+        {
+            var levels = await _client.GetLogLevelAsync();
+            if (levels is not null)
+            {
+                _loading = true;
+                try
+                {
+                    LogLevelCombo.ItemsSource = levels.Levels;
+                    LogLevelCombo.SelectedItem = levels.Level;
+                }
+                finally
+                {
+                    _loading = false;
+                }
+            }
+        }
+
+        var entries = await _client.GetLogsAsync();
+
+        if (entries.Count == 0)
+        {
+            LogText.Text = _client.HasSession ? "（没有日志）" : "（未登录，读不到）";
+            return;
+        }
+
+        // 直接拼成一大段文本，比逐条建控件快得多（300 条量级差别明显）。
+        LogText.Text = string.Join(Environment.NewLine, entries.Select(e => e.Display));
+        LogHintText.Text = $"共 {entries.Count} 条";
+
+        if (scrollToEnd)
+        {
+            LogScroll.ScrollToEnd();
+        }
+    }
+
+    private async void OnRefreshLogsClick(object sender, RoutedEventArgs e)
+        => await LoadLogsAsync(scrollToEnd: true);
+
+    // 切换日志级别。
+    private async void OnLogLevelChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loading || LogLevelCombo.SelectedItem is not string level)
+        {
+            return;
+        }
+
+        var ok = await _client.SetLogLevelAsync(level);
+        LogHintText.Text = ok
+            ? level == "info" ? "级别已设为 info。" : $"级别已设为 {level}（排查完记得调回 info）。"
+            : "级别设置失败。";
     }
 
     // ── 进程加载 / 卸载 ──

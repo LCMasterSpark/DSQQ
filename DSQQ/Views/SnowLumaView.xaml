@@ -202,6 +202,44 @@
                                Text="保存是整体覆盖语义：本页读到的其它字段会原样写回，但如果你手工改过 SnowLuma 的配置文件，建议先点「重新读取」。改动通常需要重新加载账号（或重启 SnowLuma）才生效。" />
                 </Grid>
             </TabItem>
+            <!-- ── 日志 ── -->
+            <TabItem Header="日志">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <TextBlock Text="级别" VerticalAlignment="Center" />
+                        <ComboBox x:Name="LogLevelCombo" Width="140" Margin="8,0,0,0"
+                                  SelectionChanged="OnLogLevelChanged"
+                                  ToolTip="调低能看到更多细节，但日志量会显著增加" />
+                        <Button x:Name="RefreshLogsButton" Content="刷新日志" Width="100" Height="28"
+                                Margin="12,0,0,0" Click="OnRefreshLogsClick" />
+                        <CheckBox x:Name="LogFollowCheck" Content="自动跟随" Margin="16,0,0,0"
+                                  VerticalAlignment="Center" IsChecked="True"
+                                  ToolTip="每次状态刷新时一并取回最新日志，并滚到底部" />
+                        <TextBlock x:Name="LogHintText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                   Opacity="0.7" />
+                    </StackPanel>
+
+                    <Border Grid.Row="1" Margin="0,10,0,0" Padding="10" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="LogText" TextWrapping="NoWrap"
+                                       FontFamily="Consolas, Microsoft YaHei UI" LineHeight="17"
+                                       Text="（尚未读取）" />
+                        </ScrollViewer>
+                    </Border>
+
+                    <TextBlock Grid.Row="2" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap"
+                               Text="这是 SnowLuma 自己的运行日志（含 [Hook] 注入行与消息收发）。排查完成后记得把级别调回 info —— debug/trace 会明显增加日志量。" />
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
         <TextBlock Grid.Row="2" x:Name="HintText" Margin="2,10,0,0" Opacity="0.55"

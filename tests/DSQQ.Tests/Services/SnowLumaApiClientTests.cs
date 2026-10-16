@@ -369,6 +369,76 @@ public sealed class SnowLumaApiClientTests
         Assert.DoesNotContain("\"uin\"", body, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task 日志应能穿过_list_包装层()
+    {
+        // GET /api/logs 顶层是 {"list":[…]}，又一个外壳。
+        using var server = new StubServer
+        {
+            Routes =
+            {
+                ["/api/logs"] = """{"list":[{"id":11325,"time":"2026-10-16T11:10:39.516Z","level":"success","scope":"Event","uin":3551510664,"message":"群 [X(415520021)]: [图片]","line":"19:10:39 OK [3551510664] [Event] 群 [X(415520021)]: [图片]"}]}""",
+            },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var logs = await client.GetLogsAsync();
+
+        var entry = Assert.Single(logs);
+        Assert.Equal("success", entry.Level);
+        Assert.Equal("Event", entry.Scope);
+        // 展示优先用服务端格式化好的 line。
+        Assert.StartsWith("19:10:39 OK", entry.Display, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 日志缺少_line_时应自行拼接展示()
+    {
+        using var server = new StubServer
+        {
+            Routes = { ["/api/logs"] = """{"list":[{"time":"T","level":"warn","scope":"Hook","message":"挂载失败"}]}""" },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var entry = Assert.Single(await client.GetLogsAsync());
+
+        Assert.Contains("warn", entry.Display, StringComparison.Ordinal);
+        Assert.Contains("挂载失败", entry.Display, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task 日志级别应能解析并与可选级别区分()
+    {
+        using var server = new StubServer
+        {
+            Routes = { ["/api/logs/level"] = """{"level":"info","levels":["trace","debug","info","success","warn","error"]}""" },
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var levels = await client.GetLogLevelAsync();
+
+        Assert.NotNull(levels);
+        Assert.Equal("info", levels!.Level);
+        Assert.Equal(6, levels.Levels.Count);
+        Assert.Contains("trace", levels.Levels);
+    }
+
+    [Fact]
+    public async Task 设置日志级别应提交_level_字段()
+    {
+        using var server = new StubServer
+        {
+            ResponseBody = """{"success":true}""",
+        };
+        using var client = new SnowLumaApiClient(server.BaseUri);
+
+        var ok = await client.SetLogLevelAsync("debug");
+
+        Assert.True(ok);
+        Assert.Contains("\"level\"", server.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("debug", server.LastRequestBody, StringComparison.Ordinal);
+    }
+
     // ── 极简 HTTP 桩 ──
     //
     // 用 TcpListener 而不是 HttpListener：后者在 Windows 上需要 URL 预留（通常要管理员），

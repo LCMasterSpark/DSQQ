@@ -211,6 +211,47 @@ public sealed class SnowLumaApiClient : IDisposable
         }
     }
 
+    // 读取最近的日志。
+    // 参数 limit：最多取多少条。
+    public async Task<IReadOnlyList<SnowLumaLogEntry>> GetLogsAsync(
+        int limit = 300, CancellationToken cancellationToken = default)
+    {
+        // 顶层是 {"list":[…]} —— 又一个外壳，按裸数组解析会得到空列表。
+        var wrapped = await GetAsync<SnowLumaLogList>($"/api/logs?limit={limit}", cancellationToken)
+            .ConfigureAwait(false);
+        return wrapped?.List ?? [];
+    }
+
+    // 读取当前日志级别与可选项。
+    public Task<SnowLumaLogLevels?> GetLogLevelAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SnowLumaLogLevels>("/api/logs/level", cancellationToken);
+
+    // 设置日志级别。
+    // 排查问题时调到 debug/trace 能看到更多细节，查完记得调回来 —— 低级别会显著增加日志量。
+    public async Task<bool> SetLogLevelAsync(string level, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(level);
+
+        try
+        {
+            using var response = await _http
+                .PostAsync(
+                    "/api/logs/level",
+                    new StringContent(
+                        JsonSerializer.Serialize(new { level }, JsonOptions),
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
     // 读取可用的 QQ 账号（登录成功后才有）。
     public async Task<IReadOnlyList<SnowLumaAccount>> GetQqListAsync(CancellationToken cancellationToken = default)
     {

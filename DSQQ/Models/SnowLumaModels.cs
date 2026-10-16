@@ -262,3 +262,62 @@ public sealed class SnowLumaStatusCommand
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; set; }
 }
+
+// /api/logs 的一条日志。
+//
+// 字段以实测为准：
+//   {"id":11325,"time":"2026-10-16T11:10:39.516Z","level":"success","scope":"Event",
+//    "uin":3551510664,"message":"群 […] | […]: ID:… [图片]",
+//    "line":"19:10:39 OK    [3551510664] [Event] 群 […]"}
+//
+// line 是服务端**已经格式化好**的展示行（本地时间、级别缩写、uin、scope、正文），
+// 直接用它显示比自己拼更省事、也更贴合 SnowLuma 自己的呈现。
+public sealed class SnowLumaLogEntry
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    // ISO UTC 时间。
+    [JsonPropertyName("time")]
+    public string? Time { get; set; }
+
+    // trace / debug / info / success / warn / error。
+    [JsonPropertyName("level")]
+    public string? Level { get; set; }
+
+    // 来源范围，例如 Event。
+    [JsonPropertyName("scope")]
+    public string? Scope { get; set; }
+
+    [JsonPropertyName("uin")]
+    public long? Uin { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    // 服务端格式化好的整行，供直接展示。
+    [JsonPropertyName("line")]
+    public string? Line { get; set; }
+
+    // 展示优先用 line；缺失时退化为自己拼。
+    public string Display => !string.IsNullOrWhiteSpace(Line)
+        ? Line!
+        : $"{Time} [{Level}] [{Scope}] {Message}";
+}
+
+// /api/logs 的响应外壳（顶层是 {"list":[…]}）。
+public sealed class SnowLumaLogList
+{
+    [JsonPropertyName("list")]
+    public List<SnowLumaLogEntry> List { get; set; } = [];
+}
+
+// /api/logs/level 的响应：当前级别 + 可选级别。
+public sealed class SnowLumaLogLevels
+{
+    [JsonPropertyName("level")]
+    public string? Level { get; set; }
+
+    [JsonPropertyName("levels")]
+    public List<string> Levels { get; set; } = [];
+}
