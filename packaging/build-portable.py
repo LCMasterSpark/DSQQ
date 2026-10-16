@@ -221,14 +221,17 @@ def find_node_and_pnpm(snowluma_dir: Path) -> tuple[Path, Path]:
     if node is None:
         sys.exit("找不到 node.exe（试过 SnowLuma 自带、DSH 运行时与 PATH）")
 
-    pnpm_candidates = [
-        Path(os.environ.get("USERPROFILE", "")) / ".dsh" / "dsh-runtimes" /
-        "dsh-primary-runtime" / "dependencies" / "pnpm" / "bin" / "pnpm.cjs",
-    ]
+    pnpm_candidates: list[Path] = []
 
-    on_path_pnpm = shutil.which("pnpm")
-    if on_path_pnpm:
-        pnpm_candidates.insert(0, Path(on_path_pnpm))
+    # PATH 上的优先：CI 用 pnpm/action-setup 装的走这条。
+    for name in ("pnpm", "pnpm.cjs", "pnpm.js"):
+        found = shutil.which(name)
+        if found:
+            pnpm_candidates.append(Path(found))
+
+    pnpm_candidates.append(
+        Path(os.environ.get("USERPROFILE", "")) / ".dsh" / "dsh-runtimes" /
+        "dsh-primary-runtime" / "dependencies" / "pnpm" / "bin" / "pnpm.cjs")
 
     pnpm = next((c for c in pnpm_candidates if c.is_file()), None)
     if pnpm is None:
@@ -236,6 +239,26 @@ def find_node_and_pnpm(snowluma_dir: Path) -> tuple[Path, Path]:
                  "打包时需要它安装桥接依赖；CI 上请先 actions/setup-node + pnpm/action-setup。")
 
     return node, pnpm
+
+
+def run_pnpm(node: Path, pnpm: Path, args: list[str], cwd: Path,
+             env: dict[str, str]) -> subprocess.CompletedProcess:
+    """
+    以正确的方式调用 pnpm。
+
+    ⚠️ 这里必须按后缀分派 —— 曾经在 CI 上真实踩过：
+        本机找到的是 pnpm.cjs（JS 脚本）→ 得用 `node pnpm.cjs …`
+        CI 找到的是 pnpm.cmd（批处理包装）→ 得直接 `pnpm.cmd …`
+    把 .cmd 交给 node.exe 当脚本执行必然失败（node 会把它当 JS 解析），
+    而本机能跑通、CI 上才炸，最容易被误判成环境问题。
+    """
+    if pnpm.suffix.lower() in (".cjs", ".js", ".mjs"):
+        cmd = [str(node), str(pnpm), *args]
+    else:
+        cmd = [str(pnpm), *args]
+
+    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace")
 
 
 def install_bridge_deps(bridge_dst: Path, node: Path, pnpm: Path) -> None:
@@ -249,15 +272,15 @@ def install_bridge_deps(bridge_dst: Path, node: Path, pnpm: Path) -> None:
     npm 风格的扁平结构 —— 无链接、体积正常、用户解压不需要任何特权。
     """
     env = os.environ.copy()
+    # 让 pnpm 自己能找到 node（它内部会 spawn node），也顺带修好 postinstall。
     env["PATH"] = str(node.parent) + os.pathsep + env.get("PATH", "")
 
     # --ignore-scripts：postinstall 里写的是裸 `node`，依赖 PATH 上有 node。
     # 打包机通常没有全局 node，所以先跳过，下面用绝对路径自己跑。
-    cmd = [str(node), str(pnpm), "install",
-           "--config.node-linker=hoisted", "--prod", "--ignore-scripts"]
     print("        安装依赖（hoisted 扁平结构）…")
-    result = subprocess.run(cmd, cwd=bridge_dst, env=env,
-                            capture_output=True, text=True, encoding="utf-8", errors="replace")
+    result = run_pnpm(node, pnpm,
+                      ["install", "--config.node-linker=hoisted", "--prod", "--ignore-scripts"],
+                      bridge_dst, env)
     if result.returncode != 0:
         print(result.stdout[-2000:])
         print(result.stderr[-2000:])
