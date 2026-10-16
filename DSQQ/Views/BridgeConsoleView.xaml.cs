@@ -995,6 +995,8 @@ public partial class BridgeConsoleView : UserControl
     // 读取会话状态、活动开关与工具日志。
     private async Task LoadSocialV2Async()
     {
+        await LoadSocialV2SwitchesAsync();
+
         var states = await _client.GetSocialV2StatesAsync();
         var activity = await _client.GetSocialV2ActivityAsync();
 
@@ -1025,6 +1027,159 @@ public partial class BridgeConsoleView : UserControl
 
         await LoadToolLogAsync();
         await LoadFeedbackAsync();
+    }
+
+    // 刷新开关状态时置位，避免那次赋值被当成"用户改了开关"。
+    private bool _suppressSocialV2SwitchEvents;
+
+    // 读取四个运行开关。
+    //
+    // 事件绑的是 Checked/Unchecked 而不是 Click，见 OnSocialV2SwitchChanged 的注释。
+    // 所以这里的赋值必须挡住 —— 否则每次刷新都会当成"用户改了开关"再存一遍。
+    // 标志位的设置与清除之间没有 await，不会被别的刷新插进来。
+    private async Task LoadSocialV2SwitchesAsync()
+    {
+        var response = await _client.GetSocialV2ConfigAsync();
+
+        if (response?.Config is null)
+        {
+            SocialV2SwitchHintText.Text = string.IsNullOrEmpty(_client.LastError)
+                ? "未能读取运行开关（桥接可能未运行）。"
+                : $"未能读取运行开关：{_client.LastError}";
+            return;
+        }
+
+        var config = response.Config;
+
+        _suppressSocialV2SwitchEvents = true;
+        try
+        {
+            // 缺字段时按"开"显示：桥接的默认值就是开，显示成关会让人以为被谁关掉了。
+            SocialV2EnabledCheck.IsChecked = config.Enabled ?? true;
+            SocialV2ProactiveCheck.IsChecked = config.Proactive?.Enabled ?? true;
+            SocialV2StickerCheck.IsChecked = config.Sticker?.Enabled ?? true;
+            SocialV2VoiceCheck.IsChecked = config.Voice?.Enabled ?? true;
+        }
+        finally
+        {
+            _suppressSocialV2SwitchEvents = false;
+        }
+
+        SocialV2SwitchHintText.Text = DescribeSwitches();
+    }
+
+    // 某个运行开关被改动 -> 写回桥接。
+    //
+    // 为什么绑 Checked/Unchecked 而不是 Click：一开始用的是 Click，理由是
+    // "程序化赋值不会触发 Click，所以不必再加防重入标志位"。但 Click 只在
+    // **真实输入**（鼠标、键盘）时发生 —— UIAutomation 的 TogglePattern.Toggle()
+    // 直接调 IsChecked 的 setter，Checked/Unchecked 会触发而 Click 不会。
+    // 结果是"勾变了、没人保存"，界面上完全看不出异常（实测踩到过）。
+    //
+    // 凡是会改变这个值的路径都应该走保存，所以绑 Checked/Unchecked；
+    // 刷新时的那次赋值由 _suppressSocialV2SwitchEvents 挡掉。
+    private async void OnSocialV2SwitchChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSocialV2SwitchEvents || !IsLoaded || sender is not CheckBox box)
+        {
+            return;
+        }
+
+        var on = box.IsChecked == true;
+
+        // section 为 null 表示改的是顶层字段。
+        string? section;
+        string label;
+
+        if (ReferenceEquals(box, SocialV2EnabledCheck))
+        {
+            section = null;
+            label = "二代仿真总开关";
+        }
+        else if (ReferenceEquals(box, SocialV2ProactiveCheck))
+        {
+            section = "proactive";
+            label = "主动冒泡";
+        }
+        else if (ReferenceEquals(box, SocialV2StickerCheck))
+        {
+            section = "sticker";
+            label = "表情包";
+        }
+        else
+        {
+            section = "voice";
+            label = "语音";
+        }
+
+        box.IsEnabled = false;
+        try
+        {
+            // 走 Patch 而不是 Save：桥接是浅合并，交子对象会整体替换它，
+            // 只交 {proactive:{enabled:false}} 会把 proactive 里其它字段清成默认值。
+            var ok = await _client.PatchSocialV2ConfigAsync(section, "enabled", on);
+
+            if (!ok)
+            {
+                // 失败要把勾弹回去 —— 否则界面显示"改了"，实际没改。
+                // 这次赋值同样要挡住，不然会再触发一次本方法，形成来回重试。
+                _suppressSocialV2SwitchEvents = true;
+                try
+                {
+                    box.IsChecked = !on;
+                }
+                finally
+                {
+                    _suppressSocialV2SwitchEvents = false;
+                }
+
+                SocialV2SwitchHintText.Text = string.IsNullOrEmpty(_client.LastError)
+                    ? $"没能改动「{label}」。"
+                    : $"没能改动「{label}」：{_client.LastError}";
+                return;
+            }
+        }
+        finally
+        {
+            box.IsEnabled = true;
+        }
+
+        // 回读一遍：这不是多余的往返，而是确认改动真的落地了。
+        // 桥接有一套"HTTP 200 但不生效"的历史（见 POST /api/role 那次），
+        // 只看返回码不足以说明问题。实测也发现过"勾变了但配置没变"。
+        await LoadSocialV2SwitchesAsync();
+        SocialV2SwitchHintText.Text += $"　（刚改动：{label} → {(on ? "开" : "关")}）";
+    }
+
+    // 把四个开关拼成一句话。
+    // 关着的那几项要单独列出来 —— 排查"她怎么不主动说话"时，
+    // 恰恰是这些"没开"的项最容易被忽略。
+    private string DescribeSwitches()
+    {
+        if (SocialV2EnabledCheck.IsChecked != true)
+        {
+            return "总开关已关闭：她的二代能力整体停用，工具调用也不会发生。";
+        }
+
+        var off = new List<string>();
+        if (SocialV2ProactiveCheck.IsChecked != true)
+        {
+            off.Add("主动冒泡");
+        }
+
+        if (SocialV2StickerCheck.IsChecked != true)
+        {
+            off.Add("表情包");
+        }
+
+        if (SocialV2VoiceCheck.IsChecked != true)
+        {
+            off.Add("语音");
+        }
+
+        return off.Count == 0
+            ? "总开关开着，其余三项也都开着。"
+            : $"总开关开着；已关闭：{string.Join("、", off)}。";
     }
 
     // 工具调用日志是排查"她为什么不说话"的第一入口。

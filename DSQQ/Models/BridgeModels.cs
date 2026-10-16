@@ -900,6 +900,33 @@ public sealed class SocialV2Config
     // 会话模式（与 /api/config/session-mode 同源）。
     [JsonPropertyName("sessionMode")]
     public string? SessionMode { get; set; }
+
+    // 二代仿真总开关。关掉后她的二代能力整体停用（连工具调用一起停）。
+    [JsonPropertyName("enabled")]
+    public bool? Enabled { get; set; }
+
+    // 主动冒泡：没人叫她时也可能自己开口。
+    [JsonPropertyName("proactive")]
+    public SocialV2Toggle? Proactive { get; set; }
+
+    // 表情包体系（收藏、同步、发送）。
+    [JsonPropertyName("sticker")]
+    public SocialV2Toggle? Sticker { get; set; }
+
+    // 语音：只管"她能不能发语音"，不影响手动试发。
+    [JsonPropertyName("voice")]
+    public SocialV2Toggle? Voice { get; set; }
+}
+
+// 配置树里带 enabled 的节（proactive / sticker / voice …）。
+//
+// 只映射 enabled 一个字段：这套配置有十余节、几十个字段，而且会随桥接版本继续长，
+// 全量建模的维护成本远高于收益。读取时多余的字段本来就会被忽略，
+// 写入时则由 PatchSocialV2ConfigAsync 把整节读回来再交回去，所以都不会丢。
+public sealed class SocialV2Toggle
+{
+    [JsonPropertyName("enabled")]
+    public bool? Enabled { get; set; }
 }
 
 

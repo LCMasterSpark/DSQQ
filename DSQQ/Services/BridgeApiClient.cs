@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using DSQQ.Models;
 
@@ -485,12 +486,63 @@ public sealed class BridgeApiClient : IDisposable
         => GetAsync<SocialV2ConfigResponse>("/api/socialV2/config", cancellationToken);
 
     // 保存二代仿真配置。
-    // 桥接侧是**读取-合并-写入**语义：只提交要改的字段即可，未提交的保持现状。
-    // 因此传单个开关是安全的，不会把其它配置清掉。
+    //
+    // 桥接侧是**浅合并**（`{ ...current, ...body }`）。顶层字段只交要改的那个是安全的，
+    // 未提交的保持现状；但**子对象会被整体替换** —— 交 {proactive:{enabled:false}}
+    // 会让 proactive 里没列出的字段全部落回默认值。要改子对象里的单个字段，
+    // 用下面的 PatchSocialV2ConfigAsync。
     public Task<bool> SaveSocialV2ConfigAsync(object patch, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(patch);
         return PostAsync("/api/socialV2/config", patch, cancellationToken);
+    }
+
+    // 改动二代配置里的**单个字段**，并把同一层里其它字段原样带回去。
+    //
+    // 存在的理由就是上面那条浅合并语义：交上去的子对象会整体替换当前值，
+    // 所以这里先读回配置、只改一处、再把**整个所属子对象**交回。
+    // 顶层标量（crossGroup 之类）没有这个问题，用 SaveSocialV2ConfigAsync 少一次往返。
+    //
+    // 参数 section：要改的节名（proactive / sticker / voice / wake …）。
+    //               传 null 或空白表示改顶层字段。
+    // 参数 key：该节里的字段名。
+    // 参数 value：新值；null 表示写入 JSON null。
+    public async Task<bool> PatchSocialV2ConfigAsync(
+        string? section,
+        string key,
+        object? value,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        var root = await GetJsonAsync("/api/socialV2/config", cancellationToken).ConfigureAwait(false);
+        if (root?["config"] is not JsonObject config)
+        {
+            LastError ??= "读取二代配置失败：响应里没有 config";
+            return false;
+        }
+
+        JsonObject payload;
+        if (string.IsNullOrWhiteSpace(section))
+        {
+            payload = new JsonObject { [key] = JsonSerializer.SerializeToNode(value, JsonOptions) };
+        }
+        else
+        {
+            if (config[section] is not JsonObject target)
+            {
+                LastError = $"读取二代配置失败：没有 {section} 这一节";
+                return false;
+            }
+
+            target[key] = JsonSerializer.SerializeToNode(value, JsonOptions);
+
+            // DeepClone 不能省：JsonNode 只能有一个父节点，而 target 已经挂在 config 上，
+            // 直接塞进 payload 会抛"The node already has a parent"。
+            payload = new JsonObject { [section] = target.DeepClone() };
+        }
+
+        return await PostAsync("/api/socialV2/config", payload, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)
@@ -527,6 +579,38 @@ public sealed class BridgeApiClient : IDisposable
             // 网络与解析错误都属于"读不到"，由界面显示为未知状态。
             // 但原因要留下来 —— 否则排查时只能看到一句"服务未启动"，
             // 而真实情况可能是超时、DNS、TLS 或端口不对。
+            LastError = ex is TaskCanceledException or OperationCanceledException
+                ? $"{path} 请求超时（{_http.Timeout.TotalSeconds:0} 秒）"
+                : $"{path} 连接失败：{ex.Message}";
+            return null;
+        }
+    }
+
+    // 读一份原始 JSON（不建模）。
+    // 用于"读回-改一处-整份交回"这类操作：配置树会随桥接版本长出新的节，
+    // 建模必然滞后，而建模滞后在这里的代价是**保存时把不认识的字段弄丢**。
+    private async Task<JsonNode?> GetJsonAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                LastError = $"{path} 返回 HTTP {(int)response.StatusCode}";
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                LastError = $"{path} 返回空响应";
+                return null;
+            }
+
+            return JsonNode.Parse(json);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or OperationCanceledException)
+        {
             LastError = ex is TaskCanceledException or OperationCanceledException
                 ? $"{path} 请求超时（{_http.Timeout.TotalSeconds:0} 秒）"
                 : $"{path} 连接失败：{ex.Message}";

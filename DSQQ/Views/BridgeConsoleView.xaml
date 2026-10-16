@@ -714,6 +714,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -731,7 +732,33 @@
                                    Opacity="0.7" TextWrapping="Wrap" />
                     </StackPanel>
 
+                    <!-- 运行开关：这四项改的是桥接配置里的布尔字段，改完立刻生效、不用重启。
+                         总开关放第一个 —— 关掉后她的二代能力整体停用（连工具调用一起停），
+                         这是最需要"一眼看到现在是开还是关"的一项。 -->
                     <Border Grid.Row="1" Margin="0,10,0,0" Padding="10" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="运行开关" FontWeight="SemiBold" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <CheckBox x:Name="SocialV2EnabledCheck" Content="二代仿真总开关"
+                                          VerticalAlignment="Center" Margin="0,0,22,0"
+                                          Checked="OnSocialV2SwitchChanged" Unchecked="OnSocialV2SwitchChanged" />
+                                <CheckBox x:Name="SocialV2ProactiveCheck" Content="主动冒泡"
+                                          VerticalAlignment="Center" Margin="0,0,22,0"
+                                          Checked="OnSocialV2SwitchChanged" Unchecked="OnSocialV2SwitchChanged" />
+                                <CheckBox x:Name="SocialV2StickerCheck" Content="表情包"
+                                          VerticalAlignment="Center" Margin="0,0,22,0"
+                                          Checked="OnSocialV2SwitchChanged" Unchecked="OnSocialV2SwitchChanged" />
+                                <CheckBox x:Name="SocialV2VoiceCheck" Content="语音"
+                                          VerticalAlignment="Center"
+                                          Checked="OnSocialV2SwitchChanged" Unchecked="OnSocialV2SwitchChanged" />
+                            </WrapPanel>
+                            <TextBlock x:Name="SocialV2SwitchHintText" Margin="0,6,0,0"
+                                       TextWrapping="Wrap" Opacity="0.75" Text="（未读取）" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Margin="0,10,0,0" Padding="10" CornerRadius="4"
                             Background="{DynamicResource DsqqSurface}">
                         <StackPanel>
                             <TextBlock Text="会话（选中后看右侧明细）" FontWeight="SemiBold" />
@@ -741,7 +768,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                    <Grid Grid.Row="3" Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
