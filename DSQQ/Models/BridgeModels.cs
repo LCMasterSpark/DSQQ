@@ -13,6 +13,11 @@ public sealed class BridgeStatus
     [JsonPropertyName("dshReady")]
     public bool DshReady { get; set; }
 
+    // 角色模式：active（正常）或 silent（静默 —— 不回复群友，管理员私聊照常）。
+    // 界面用它初始化静默按钮，避免与桥接实际状态不一致。
+    [JsonPropertyName("roleMode")]
+    public string? RoleMode { get; set; }
+
     // 管理员 QQ 号。
     [JsonPropertyName("ownerQQ")]
     public long? OwnerQQ { get; set; }
@@ -699,6 +704,163 @@ public sealed class SlangEntry
     public string Display => $"[{Status}] {Content}"
         + (string.IsNullOrWhiteSpace(Meaning) ? string.Empty : $" —— {Meaning}")
         + (Count > 0 ? $"（{Count} 次）" : string.Empty);
+}
+
+// 挂起审批 / 提问（/api/pending）。
+// 注意应答机制：挂起项**由 QQ 消息消费** —— 管理员在对应会话里回复"通过/拒绝"即完成审批；
+// 提问则回复选项文字或自定义答案。桌面端只做展示与跳转，不去伪造应答。
+public sealed class PendingResponse
+{
+    [JsonPropertyName("pending")]
+    public List<PendingItem> Pending { get; set; } = [];
+}
+
+// 一个挂起项。
+public sealed class PendingItem
+{
+    // 会话 key（group:群号 或 private:QQ号）。
+    [JsonPropertyName("key")]
+    public string Key { get; set; } = string.Empty;
+
+    // approval（工具审批）或 question（向管理员提问）。
+    [JsonPropertyName("kind")]
+    public string? Kind { get; set; }
+
+    [JsonPropertyName("sessionId")]
+    public string? SessionId { get; set; }
+
+    // 仅 approval：待审批的工具名。
+    [JsonPropertyName("toolName")]
+    public string? ToolName { get; set; }
+
+    // 仅 approval：申请理由。
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+
+    [JsonPropertyName("approvalId")]
+    public string? ApprovalId { get; set; }
+
+    // 仅 question：问题列表。
+    [JsonPropertyName("questions")]
+    public List<PendingQuestion>? Questions { get; set; }
+
+    public bool IsApproval => string.Equals(Kind, "approval", StringComparison.OrdinalIgnoreCase);
+
+    // 界面显示文本：把"在哪、要你做什么"写全。
+    public string Display
+    {
+        get
+        {
+            if (IsApproval)
+            {
+                var tool = string.IsNullOrWhiteSpace(ToolName) ? "(未知工具)" : ToolName;
+                var why = string.IsNullOrWhiteSpace(Reason) ? string.Empty : $" —— {Reason}";
+                return $"【工具审批】{Key} 请求执行 {tool}{why}";
+            }
+
+            var count = Questions?.Count ?? 0;
+            var first = Questions?.FirstOrDefault()?.Question;
+            return count > 0
+                ? $"【提问】{Key}（{count} 个问题）{first}"
+                : $"【提问】{Key}";
+        }
+    }
+}
+
+// 一个待回答的问题。
+public sealed class PendingQuestion
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("question")]
+    public string? Question { get; set; }
+
+    [JsonPropertyName("options")]
+    public List<PendingQuestionOption>? Options { get; set; }
+}
+
+// 问题的可选项。
+public sealed class PendingQuestionOption
+{
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
+}
+
+// 消耗走势（/api/tokens/series）。
+public sealed class TokenSeries
+{
+    [JsonPropertyName("symbol")]
+    public string? Symbol { get; set; }
+
+    // 桶宽（毫秒）；默认 30 分钟一桶。
+    [JsonPropertyName("bucketMs")]
+    public long BucketMs { get; set; }
+
+    [JsonPropertyName("buckets")]
+    public List<TokenBucket> Buckets { get; set; } = [];
+}
+
+// 一个时间桶。
+public sealed class TokenBucket
+{
+    // 桶起始时间（Unix 毫秒）。
+    [JsonPropertyName("t")]
+    public long Time { get; set; }
+
+    [JsonPropertyName("cost")]
+    public double Cost { get; set; }
+
+    [JsonPropertyName("tokens")]
+    public long Tokens { get; set; }
+
+    [JsonPropertyName("turns")]
+    public int Turns { get; set; }
+
+    // 计价档位：off（空闲时段）/ peak（高峰）。
+    [JsonPropertyName("tier")]
+    public string? Tier { get; set; }
+}
+
+// 某会话的逐轮花费（/api/tokens/turns?key=…）。
+// 响应结构由 tokenLedger.conversation() 决定，这里只取界面要用的部分。
+public sealed class TokenTurns
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    [JsonPropertyName("totals")]
+    public TokenTurnTotals? Totals { get; set; }
+
+    [JsonPropertyName("turns")]
+    public List<TokenTurnEntry> Turns { get; set; } = [];
+}
+
+public sealed class TokenTurnTotals
+{
+    [JsonPropertyName("tokens")]
+    public long Tokens { get; set; }
+
+    [JsonPropertyName("cost")]
+    public double Cost { get; set; }
+}
+
+public sealed class TokenTurnEntry
+{
+    [JsonPropertyName("turn")]
+    public int Turn { get; set; }
+
+    [JsonPropertyName("tokens")]
+    public long Tokens { get; set; }
+
+    [JsonPropertyName("cost")]
+    public double Cost { get; set; }
+
+    [JsonPropertyName("time")]
+    public long Time { get; set; }
 }
 
 // 会话模式（/api/config/session-mode）。

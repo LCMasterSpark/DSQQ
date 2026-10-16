@@ -47,6 +47,9 @@ public partial class BridgeConsoleView : UserControl
     // 上次载入的模型与强度，用于判断是否真的改过（未改就不发请求）。
     private ModelSelection? _modelBaseline;
 
+    // 当前是否处于静默模式（由按钮切换并本地记住，避免每次都要问桥接）。
+    private bool _roleModeIsSilent;
+
     // 初始化页面。
     // 参数 services：应用服务宿主。
     // 异常 ArgumentNullException：为 null。
@@ -142,6 +145,11 @@ public partial class BridgeConsoleView : UserControl
         }
 
         ApplyStatus(status);
+
+        // 状态里带着 roleMode，用它初始化静默按钮，避免与桥接实际状态不一致。
+        _roleModeIsSilent = string.Equals(status.RoleMode, "silent", StringComparison.OrdinalIgnoreCase);
+        UpdateSilentUi();
+
         await LoadWhitelistAsync();
         await LoadGroupsAsync();
         await LoadPersonaAsync();
@@ -149,6 +157,8 @@ public partial class BridgeConsoleView : UserControl
         await LoadActivityAsync();
         await LoadSessionContextAsync();
         await LoadTokensAsync();
+        await LoadPendingAsync();
+        await LoadCostTrendAsync();
         await LoadRolesAsync();
         await LoadSlangAsync();
 
@@ -837,6 +847,174 @@ public partial class BridgeConsoleView : UserControl
             ? $"已保存 {preset}；需重启 DSH 生效。"
             : "保存被拒绝：可能缺少安全不变量（权限边界、令牌、角色注入等）或正文过短。";
     }
+    // ── 上下文重置 ──
+
+    // 重置选中会话的上下文：清掉它的 DSH 映射并重建，相当于让她忘掉这段对话。
+    private async void OnResetSessionClick(object sender, RoutedEventArgs e)
+    {
+        if (SessionGrid.SelectedItem is not BridgeSessionEntry session)
+        {
+            ResetHintText.Text = "请先在表格里选中一个会话。";
+            return;
+        }
+
+        var answer = System.Windows.MessageBox.Show(
+            $"重置「{session.Key}」的上下文？{Environment.NewLine}{Environment.NewLine}"
+            + "她会忘掉这段对话的来龙去脉，正在进行的回合会被中断。此操作不可撤销。",
+            "确认重置上下文",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            ResetHintText.Text = "已取消。";
+            return;
+        }
+
+        var okReset = await _client.ResetSessionAsync(session.Key);
+        ResetHintText.Text = okReset
+            ? $"已重置「{session.Key}」的上下文。"
+            : "重置失败：桥接未接受（可能该会话已不存在）。";
+
+        if (okReset)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    // 重置全部上下文（清空所有会话映射）。
+    private async void OnResetWorkspaceClick(object sender, RoutedEventArgs e)
+    {
+        var answer = System.Windows.MessageBox.Show(
+            "重置「全部」上下文？" + Environment.NewLine + Environment.NewLine
+            + "所有群与私聊的 DSH 会话映射都会被清空，她将忘掉全部历史对话。"
+            + "正在进行的回合会被中断。此操作不可撤销。",
+            "确认重置全部上下文",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            ResetHintText.Text = "已取消。";
+            return;
+        }
+
+        var okReset = await _client.ResetWorkspaceAsync();
+        ResetHintText.Text = okReset ? "已重置全部上下文。" : "重置失败：桥接未接受。";
+
+        if (okReset)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    // ── 挂起审批 / 提问 ──
+
+    // 挂起项在表格里的呈现（DataGrid 绑定需要公开属性）。
+    public sealed record PendingRow(string KindText, string Key, string Detail);
+
+    // 由挂起项转成表格行。
+    private static PendingRow ToRow(PendingItem item)
+    {
+        // PendingItem.Display 已经把"在哪、要你做什么"写全了，这里拆出两列避免重复。
+        var kind = item.IsApproval ? "工具审批" : "提问";
+        var detail = item.IsApproval
+            ? $"执行 {item.ToolName ?? "(未知工具)"}"
+              + (string.IsNullOrWhiteSpace(item.Reason) ? string.Empty : $" —— {item.Reason}")
+            : string.Join(" / ", (item.Questions ?? []).Select(q => q.Question ?? "(无题面)"));
+
+        return new PendingRow(kind, item.Key, detail);
+    }
+
+    // 读取挂起审批 / 提问。
+    // 只展示不代答：桥接要求审批必须来自**管理员本人的 QQ 消息**（非管理员会被回"仅管理员可操作"），
+    // 桌面端伪造不了这个身份，所以给按钮反而是骗人的。
+    private async Task LoadPendingAsync()
+    {
+        var response = await _client.GetPendingAsync();
+        if (response is null)
+        {
+            PendingCountText.Text = "未能读取（桥接可能未运行）";
+            return;
+        }
+
+        PendingGrid.ItemsSource = response.Pending.Select(ToRow).ToList();
+
+        PendingCountText.Text = response.Pending.Count == 0
+            ? "当前没有待处理项"
+            : $"有 {response.Pending.Count} 项待处理";
+    }
+
+    private async void OnRefreshPendingClick(object sender, RoutedEventArgs e) => await LoadPendingAsync();
+
+    // ── 静默开关 ──
+
+    // 切换静默模式。
+    // 静默下不回复群友消息（仍记录），管理员私聊照常处理 —— 临时走开时用。
+    private async void OnToggleSilentClick(object sender, RoutedEventArgs e)
+    {
+        var silently = _roleModeIsSilent;
+        var target = silently ? "active" : "silent";
+
+        var okSet = await _client.SetRoleModeAsync(target);
+        if (!okSet)
+        {
+            SilentStateText.Text = "切换失败：桥接未接受（请确认桥接在运行）。";
+            return;
+        }
+
+        _roleModeIsSilent = !silently;
+        UpdateSilentUi();
+        SilentStateText.Text = _roleModeIsSilent
+            ? "已开启静默 —— 群友消息不再触发回复。"
+            : "已恢复 —— 群消息照常处理。";
+    }
+
+    private void UpdateSilentUi()
+    {
+        SilentToggleButton.Content = _roleModeIsSilent ? "关闭静默" : "开启静默";
+        SilentStateText.Text = _roleModeIsSilent ? "静默中" : "正常";
+    }
+
+    // ── 消耗走势 ──
+
+    // 走势表格行。
+    public sealed record CostRow(string TimeText, string TierText, string TokensText, string CostText, string TurnsText);
+
+    // 读取消耗走势并只显示有消耗的桶。
+    private async Task LoadCostTrendAsync()
+    {
+        var series = await _client.GetTokenSeriesAsync();
+        if (series is null)
+        {
+            CostTrendHintText.Text = "未能读取消耗走势（桥接可能未运行）。";
+            return;
+        }
+
+        // 24 小时 × 半小时 = 48 个桶，绝大多数是空的；只列有消耗的，
+        // 否则表格里全是 0，真正花钱的时段反而要找半天。
+        var rows = series.Buckets
+            .Where(b => b.Tokens > 0 || b.Cost > 0 || b.Turns > 0)
+            .Select(b => new CostRow(
+                DateTimeOffset.FromUnixTimeMilliseconds(b.Time).ToLocalTime().ToString("MM-dd HH:mm"),
+                b.Tier == "peak" ? "高峰" : "空闲",
+                b.Tokens.ToString("N0"),
+                $"{series.Symbol}{b.Cost:0.######}",
+                b.Turns.ToString()))
+            .ToList();
+
+        CostTrendGrid.ItemsSource = rows;
+
+        var totalCost = series.Buckets.Sum(b => b.Cost);
+        var totalTokens = series.Buckets.Sum(b => b.Tokens);
+        var peakBuckets = series.Buckets.Count(b => b.Tier == "peak" && (b.Tokens > 0 || b.Cost > 0));
+
+        CostTrendHintText.Text = rows.Count == 0
+            ? "最近 24 小时没有消耗记录。"
+            : $"共 {rows.Count} 个时段有消耗，合计 {totalTokens:N0} tokens / {series.Symbol}{totalCost:0.##}"
+              + $"；其中有消耗的高峰时段 {peakBuckets} 个（高峰按倍率计价）。";
+    }
+
     // ── 会话与上下文 ──
 
     // 程序化设置单选/勾选时抑制事件，避免把"载入"当成"用户改动"。

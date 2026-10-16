@@ -42,6 +42,8 @@
                             Click="OnStopAllClick" />
                     <Button x:Name="OpenSnowLumaButton" Content="打开 SnowLuma 控制台" Width="170" Height="32"
                             Margin="16,0,0,0" Click="OnOpenSnowLumaClick" />
+                    <Button x:Name="RestartBridgeButton" Content="重启桥接" Width="110" Height="32"
+                            Margin="8,0,0,0" Click="OnRestartBridgeClick" />
                     <ProgressBar x:Name="BusyBar" Width="140" Height="6" Margin="16,0,0,0"
                                  IsIndeterminate="True" VerticalAlignment="Center"
                                  Visibility="Collapsed" />

@@ -331,6 +331,44 @@ public sealed class BridgeApiClient : IDisposable
     public Task<bool> ExtractSlangAsync(CancellationToken cancellationToken = default)
         => PostAsync("/api/slang/extract", new { }, cancellationToken);
 
+    // 读取挂起审批 / 提问。
+    // 只读 —— 应答由 QQ 消息完成（管理员在对应会话回复"通过/拒绝"或答案）。
+    public Task<PendingResponse?> GetPendingAsync(CancellationToken cancellationToken = default)
+        => GetAsync<PendingResponse>("/api/pending", cancellationToken);
+
+    // 读取消耗走势（按时间分桶）。
+    public Task<TokenSeries?> GetTokenSeriesAsync(CancellationToken cancellationToken = default)
+        => GetAsync<TokenSeries>("/api/tokens/series", cancellationToken);
+
+    // 读取某会话的逐轮花费；key 形如 group:群号 或 private:QQ号。
+    public Task<TokenTurns?> GetTokenTurnsAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        return GetAsync<TokenTurns>($"/api/tokens/turns?key={Uri.EscapeDataString(key)}", cancellationToken);
+    }
+
+    // 设置角色模式：active（正常）或 silent（静默 —— 不回复群友，管理员私聊照常）。
+    public Task<bool> SetRoleModeAsync(string mode, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mode);
+        return PostAsync("/api/role-mode", new { mode }, cancellationToken);
+    }
+
+    // 重启桥接进程。
+    public Task<bool> RestartBridgeAsync(CancellationToken cancellationToken = default)
+        => PostAsync("/api/restart", new { }, cancellationToken);
+
+    // 重置指定会话的上下文（清除该会话的 DSH 会话映射）。
+    public Task<bool> ResetSessionAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        return PostAsync("/api/session/reset", new { key }, cancellationToken);
+    }
+
+    // 重置整个工作区（清空所有会话映射）。
+    public Task<bool> ResetWorkspaceAsync(CancellationToken cancellationToken = default)
+        => PostAsync("/api/workspace/reset", new { }, cancellationToken);
+
     // 读取会话模式。
     public Task<SessionModeResponse?> GetSessionModeAsync(CancellationToken cancellationToken = default)
         => GetAsync<SessionModeResponse>("/api/config/session-mode", cancellationToken);

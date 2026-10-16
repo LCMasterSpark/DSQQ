@@ -150,6 +150,41 @@ public partial class ServiceManagementView : UserControl
     // 刷新端口状态。
     private async void OnRefreshPortsClick(object sender, RoutedEventArgs e) => await RefreshPortsAsync();
 
+    // 重启桥接进程。
+    // 桥接收到后自行退出并由外部（或用户）拉起；这里给出明确提示，避免用户以为界面卡了。
+    private async void OnRestartBridgeClick(object sender, RoutedEventArgs e)
+    {
+        var answer = System.Windows.MessageBox.Show(
+            "确定重启 qq-bridge？\n\n"
+            + "重启期间桥接控制台与消息处理会短暂中断，正在进行的回合可能被丢弃。"
+            + "DSQQ 里的各项数据需要等它重新就绪后手动刷新。",
+            "确认重启桥接",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            ProgressText.Text = "已取消重启。";
+            return;
+        }
+
+        ProgressText.Text = "正在请求重启桥接…";
+
+        try
+        {
+            using var client = new BridgeApiClient(_services.Endpoints.BridgeConsole, TimeSpan.FromSeconds(10));
+            var okSent = await client.RestartBridgeAsync();
+
+            ProgressText.Text = okSent
+                ? "重启请求已发出。桥接会在几秒内退出，请等它重新就绪后再刷新各页面。"
+                : "重启请求失败：桥接未接受（可能未在运行）。";
+        }
+        catch (Exception ex)
+        {
+            ProgressText.Text = $"重启请求发送失败：{ex.Message}";
+        }
+    }
+
     // 打开 SnowLuma 控制台。
     //
     // 这是"唤起 OneBot"的入口：OneBot 的 3000/3001 由 SnowLuma 在**账号登录后**才启动，

@@ -35,23 +35,54 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0" Padding="14" CornerRadius="4" Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="挂起审批 / 提问" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="RefreshPendingButton" Content="刷新" Width="70" Height="26"
+                                        Margin="12,0,0,0" Style="{StaticResource MahApps.Styles.Button.Flat}"
+                                        Click="OnRefreshPendingClick" />
+                                <TextBlock x:Name="PendingCountText" Margin="12,0,0,0"
+                                           VerticalAlignment="Center" Opacity="0.75" />
+                            </StackPanel>
+                            <TextBlock Margin="0,6,0,0" Opacity="0.65" TextWrapping="Wrap"
+                                       Text="应答方式：在对应会话里用管理员号回复「通过」或「拒绝」（提问则回复选项文字或自定义答案）。桌面端不做代答 —— 桥接要求审批必须来自管理员本人消息。" />
+                            <DataGrid x:Name="PendingGrid" Margin="0,8,0,0" AutoGenerateColumns="False"
+                                      IsReadOnly="True" HeadersVisibility="Column" MaxHeight="150"
+                                      CanUserAddRows="False" CanUserDeleteRows="False"
+                                      GridLinesVisibility="Horizontal">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="类型" Binding="{Binding KindText}" Width="90" />
+                                    <DataGridTextColumn Header="会话" Binding="{Binding Key}" Width="180" />
+                                    <DataGridTextColumn Header="内容" Binding="{Binding Detail}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="1" Margin="0,12,0,0" Padding="14" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
                         <StackPanel>
                             <TextBlock Text="运行模式" FontWeight="SemiBold" />
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <ComboBox x:Name="ModeCombo" Width="200" />
                                 <Button x:Name="ApplyModeButton" Content="切换模式" Width="100" Height="30"
                                         Margin="8,0,0,0" Click="OnApplyModeClick" />
-                                <TextBlock Text="（切换即时生效，无需重启）" Margin="10,0,0,0"
-                                           VerticalAlignment="Center" Opacity="0.6" />
+                                <Button x:Name="SilentToggleButton" Content="开启静默" Width="100" Height="30"
+                                        Margin="16,0,0,0" Click="OnToggleSilentClick" />
+                                <TextBlock x:Name="SilentStateText" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Opacity="0.7" />
                             </StackPanel>
+                            <TextBlock Margin="0,6,0,0" Opacity="0.6" TextWrapping="Wrap"
+                                       Text="静默模式开启后不回复群友消息（仍记录），管理员私聊照常处理 —— 适合临时走开时用。" />
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Row="1" Margin="0,12,0,0" Padding="14" CornerRadius="4"
+                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="14" CornerRadius="4"
                             Background="{DynamicResource DsqqSurface}">
                         <StackPanel>
                             <TextBlock Text="会话与上下文" FontWeight="SemiBold" />
@@ -78,7 +109,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="14" CornerRadius="4"
+                    <Border Grid.Row="3" Margin="0,12,0,0" Padding="14" CornerRadius="4"
                             Background="{DynamicResource DsqqSurface}">
                         <StackPanel>
                             <TextBlock Text="模型与推理强度" FontWeight="SemiBold" />
@@ -87,6 +118,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <TextBlock Text="模型" VerticalAlignment="Center" />
                                 <ComboBox x:Name="ModelCombo" Width="240" Margin="8,0,0,0"
+                                          DisplayMemberPath="Display"
                                           SelectionChanged="OnModelChanged" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
@@ -100,10 +132,12 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Row="3" Margin="0,12,0,0" Padding="14" CornerRadius="4"
+                    <Border Grid.Row="4" Margin="0,12,0,0" Padding="14" CornerRadius="4"
                             Background="{DynamicResource DsqqSurface}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="会话" FontWeight="SemiBold" />
+                            <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,0" Opacity="0.6" TextWrapping="Wrap"
+                                       Text="「重置上下文」会清掉该会话的 DSH 映射并重建 —— 相当于让她忘掉这段对话。正在进行的回合会被中断。" />
                             <DataGrid x:Name="SessionGrid" Margin="0,8,0,0" AutoGenerateColumns="False"
                                       IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False"
                                       GridLinesVisibility="Horizontal">
@@ -112,6 +146,17 @@
                                     <DataGridTextColumn Header="DSH 会话 ID" Binding="{Binding SessionId}" Width="*" />
                                 </DataGrid.Columns>
                             </DataGrid>
+                            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="ResetSessionButton" Content="重置选中会话的上下文"
+                                        Width="180" Height="28"
+                                        Style="{StaticResource MahApps.Styles.Button.Flat}"
+                                        Click="OnResetSessionClick" />
+                                <Button x:Name="ResetWorkspaceButton" Content="重置全部上下文"
+                                        Width="140" Height="28" Margin="8,0,0,0"
+                                        Click="OnResetWorkspaceClick" />
+                                <TextBlock x:Name="ResetHintText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                           Opacity="0.65" TextWrapping="Wrap" />
+                            </StackPanel>
                         </DockPanel>
                     </Border>
                 </Grid>
@@ -458,6 +503,7 @@
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -466,6 +512,27 @@
                                Text="尚未读取。" />
 
                     <Border Grid.Row="1" Margin="0,12,0,0" Padding="14" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="消耗走势（最近 24 小时，每半小时一桶）" FontWeight="SemiBold" />
+                            <ScrollViewer Margin="0,8,0,0" MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                                <DataGrid x:Name="CostTrendGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                          HeadersVisibility="Column" CanUserAddRows="False"
+                                          CanUserDeleteRows="False" GridLinesVisibility="Horizontal">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="时间" Binding="{Binding TimeText}" Width="150" />
+                                        <DataGridTextColumn Header="档位" Binding="{Binding TierText}" Width="80" />
+                                        <DataGridTextColumn Header="tokens" Binding="{Binding TokensText}" Width="110" />
+                                        <DataGridTextColumn Header="金额" Binding="{Binding CostText}" Width="100" />
+                                        <DataGridTextColumn Header="轮次" Binding="{Binding TurnsText}" Width="70" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </ScrollViewer>
+                            <TextBlock x:Name="CostTrendHintText" Margin="0,6,0,0" Opacity="0.6" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Margin="0,12,0,0" Padding="14" CornerRadius="4"
                             Background="{DynamicResource DsqqSurface}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="最近活动（来自桥接）" FontWeight="SemiBold" />
