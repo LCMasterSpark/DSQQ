@@ -28,7 +28,14 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: 还原依赖
-        run: dotnet restore DSQQ.slnx
+        # 必须显式带 --runtime。
+        # DSQQ.csproj 声明了 <RuntimeIdentifier>win-x64</RuntimeIdentifier>（为了让 publish
+        # 的输出路径与本地一致），于是构建阶段需要 win-x64 的运行时包。
+        # 不带 RID 的还原不会去下这些包，构建就会报：
+        #   The runtime pack for Microsoft.WindowsDesktop.App.Runtime.win-x64 was not downloaded.
+        # 本地之所以从来碰不到这个问题，是因为本机早就 restore/publish 过 win-x64，
+        # 包已经在 NuGet 缓存里了 —— 又一个"只在 CI 上才现形"的坑。
+        run: dotnet restore DSQQ.slnx --runtime win-x64
 
       - name: 构建
         run: dotnet build DSQQ.slnx --configuration Release --no-restore
