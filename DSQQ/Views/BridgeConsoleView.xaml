@@ -707,6 +707,83 @@
             </TabItem>
 
             <!-- ══ 仿真提示词 ══ -->
+            <!-- ══ 二代仿真 ══ -->
+            <TabItem Header="二代仿真">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <TextBlock Text="二代仿真状态" FontWeight="SemiBold" FontSize="14"
+                                   VerticalAlignment="Center" />
+                        <Button x:Name="RefreshSocialV2Button" Content="刷新" Width="80" Height="28"
+                                Margin="14,0,0,0" Style="{StaticResource MahApps.Styles.Button.Flat}"
+                                Click="OnRefreshSocialV2Click" />
+                        <Button x:Name="ClearToolLogButton" Content="清空工具日志" Width="110" Height="28"
+                                Margin="8,0,0,0" Click="OnClearToolLogClick" />
+                        <TextBlock x:Name="SocialV2HintText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                   Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Border Grid.Row="1" Margin="0,10,0,0" Padding="10" CornerRadius="4"
+                            Background="{DynamicResource DsqqSurface}">
+                        <StackPanel>
+                            <TextBlock Text="会话（选中后看右侧明细）" FontWeight="SemiBold" />
+                            <ListBox x:Name="SocialV2ConversationList" Margin="0,6,0,0" Height="100"
+                                     DisplayMemberPath="Display"
+                                     SelectionChanged="OnSocialV2SelectionChanged" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Margin="0,0,6,0" Padding="10" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="唤醒与安全" FontWeight="SemiBold" />
+                                <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="SocialV2WakeText" TextWrapping="Wrap"
+                                               FontFamily="Consolas, Microsoft YaHei UI" LineHeight="18"
+                                               Text="（未采集）" />
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Margin="6,0" Padding="10" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="记忆" FontWeight="SemiBold" />
+                                <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="SocialV2MemoryText" TextWrapping="Wrap"
+                                               FontFamily="Consolas, Microsoft YaHei UI" LineHeight="18"
+                                               Text="（未采集）" />
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Margin="6,0,0,0" Padding="10" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="工具调用日志" FontWeight="SemiBold" />
+                                <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="SocialV2ToolLogText" TextWrapping="Wrap"
+                                               FontFamily="Consolas, Microsoft YaHei UI" LineHeight="18"
+                                               Text="（未采集）" />
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
         <TextBlock Grid.Row="2" x:Name="HintText" Margin="2,10,0,0" Opacity="0.55"

@@ -335,6 +335,48 @@ public sealed class BridgeApiClient : IDisposable
     public Task<bool> ExtractSlangAsync(CancellationToken cancellationToken = default)
         => PostAsync("/api/slang/extract", new { }, cancellationToken);
 
+    // ── 二代仿真 ──
+
+    // 读取所有会话的二代状态（唤醒配置、未读、上次唤醒原因）。
+    public Task<SocialV2StatesResponse?> GetSocialV2StatesAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SocialV2StatesResponse>("/api/socialV2/states", cancellationToken);
+
+    // 读取单个会话的二代状态。
+    public Task<SocialV2Conversation?> GetSocialV2StateAsync(
+        string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        return GetAsync<SocialV2Conversation>(
+            $"/api/socialV2/state?key={Uri.EscapeDataString(key)}", cancellationToken);
+    }
+
+    // 读取某会话的记忆（formatted 是已渲染好的原文）。
+    public Task<SocialV2MemoryResponse?> GetSocialV2MemoryAsync(
+        string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        return GetAsync<SocialV2MemoryResponse>(
+            $"/api/socialV2/memory?key={Uri.EscapeDataString(key)}", cancellationToken);
+    }
+
+    // 读取工具调用日志。这是排查"她为什么不说话"的第一入口 ——
+    // 能看到她到底调了哪些工具、哪些失败了。
+    public Task<SocialV2ToolLogResponse?> GetSocialV2ToolLogAsync(
+        int limit = 200, CancellationToken cancellationToken = default)
+        => GetAsync<SocialV2ToolLogResponse>($"/api/socialV2/tool-log?limit={limit}", cancellationToken);
+
+    // 清空工具调用日志。
+    public Task<bool> ClearSocialV2ToolLogAsync(CancellationToken cancellationToken = default)
+        => PostAsync("/api/socialV2/tool-log/clear", new { }, cancellationToken);
+
+    // 读取二代仿真的活动状态（是否被暂停）。
+    public Task<SocialV2ActivityResponse?> GetSocialV2ActivityAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SocialV2ActivityResponse>("/api/socialV2/activity", cancellationToken);
+
+    // 读取反馈条目。
+    public Task<SocialV2FeedbackResponse?> GetSocialV2FeedbackAsync(CancellationToken cancellationToken = default)
+        => GetAsync<SocialV2FeedbackResponse>("/api/socialV2/feedback", cancellationToken);
+
     // 读取挂起审批 / 提问。
     // 只读 —— 应答由 QQ 消息完成（管理员在对应会话回复"通过/拒绝"或答案）。
     public Task<PendingResponse?> GetPendingAsync(CancellationToken cancellationToken = default)

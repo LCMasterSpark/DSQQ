@@ -167,6 +167,7 @@ public partial class BridgeConsoleView : UserControl
         await LoadCostTrendAsync();
         await LoadRolesAsync();
         await LoadSlangAsync();
+        await LoadSocialV2Async();
 
         UpdateIdentityAudit();
 
@@ -987,6 +988,112 @@ public partial class BridgeConsoleView : UserControl
             : percent >= 80
                 ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xCA, 0x8A, 0x04))
                 : AccentBrush;
+    }
+
+    // ── 二代仿真 ──
+
+    // 读取会话状态、活动开关与工具日志。
+    private async Task LoadSocialV2Async()
+    {
+        var states = await _client.GetSocialV2StatesAsync();
+        var activity = await _client.GetSocialV2ActivityAsync();
+
+        if (states is null)
+        {
+            SocialV2HintText.Text = "未能读取二代仿真状态（桥接可能未运行）。";
+            return;
+        }
+
+        // 保留选中项：定时刷新不该把用户的选择清掉。
+        var selectedKey = (SocialV2ConversationList.SelectedItem as SocialV2Conversation)?.Key;
+
+        SocialV2ConversationList.ItemsSource = states.Conversations;
+
+        if (selectedKey is not null)
+        {
+            SocialV2ConversationList.SelectedItem =
+                states.Conversations.FirstOrDefault(c => c.Key == selectedKey);
+        }
+
+        if (SocialV2ConversationList.SelectedItem is null && states.Conversations.Count > 0)
+        {
+            SocialV2ConversationList.SelectedIndex = 0;
+        }
+
+        var paused = activity?.Paused == true ? "　⚠ 二代仿真已暂停" : string.Empty;
+        SocialV2HintText.Text = $"{states.Conversations.Count} 个会话{paused}";
+
+        await LoadToolLogAsync();
+    }
+
+    // 工具调用日志是排查"她为什么不说话"的第一入口。
+    private async Task LoadToolLogAsync()
+    {
+        var log = await _client.GetSocialV2ToolLogAsync();
+
+        if (log is null)
+        {
+            SocialV2ToolLogText.Text = "未能读取工具日志。";
+            return;
+        }
+
+        SocialV2ToolLogText.Text = log.Entries.Count == 0
+            ? "（暂无记录）"
+            : string.Join(Environment.NewLine, log.Entries.AsEnumerable().Reverse().Select(e => e.Display));
+    }
+
+    private async void OnRefreshSocialV2Click(object sender, RoutedEventArgs e) => await LoadSocialV2Async();
+
+    private async void OnClearToolLogClick(object sender, RoutedEventArgs e)
+    {
+        var answer = System.Windows.MessageBox.Show(
+            $"清空工具调用日志？{Environment.NewLine}{Environment.NewLine}"
+            + "它只记录工具调用历史，清掉不影响她的行为；但排查问题时就没得看了。",
+            "确认清空",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            SocialV2HintText.Text = "已取消。";
+            return;
+        }
+
+        var ok = await _client.ClearSocialV2ToolLogAsync();
+        SocialV2HintText.Text = ok ? "工具日志已清空。" : "清空失败。";
+
+        if (ok)
+        {
+            await LoadToolLogAsync();
+        }
+    }
+
+    // 选中会话后拉它的状态明细与记忆。
+    private async void OnSocialV2SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (SocialV2ConversationList.SelectedItem is not SocialV2Conversation conversation
+            || string.IsNullOrWhiteSpace(conversation.Key))
+        {
+            return;
+        }
+
+        var key = conversation.Key;
+
+        // 用列表里已有的那份先说清唤醒配置，避免等网络回来才有内容。
+        SocialV2WakeText.Text =
+            $"会话：{key}{Environment.NewLine}{Environment.NewLine}"
+            + (conversation.WakeConfig?.Display ?? "（读不到唤醒配置）")
+            + Environment.NewLine + Environment.NewLine
+            + "安全标志：" + (conversation.WakeSafety?.Display ?? "（无）")
+            + Environment.NewLine + Environment.NewLine
+            + $"未读 {conversation.UnreadCount}　最近消息 {conversation.RecentCount}"
+            + Environment.NewLine
+            + $"上次唤醒：{conversation.LastWakeReason ?? "（无记录）"}";
+
+        var memory = await _client.GetSocialV2MemoryAsync(key);
+        SocialV2MemoryText.Text = memory is null
+            ? "（读不到记忆）"
+            : string.IsNullOrWhiteSpace(memory.Formatted) ? "（她还没有关于这个会话的记忆）" : memory.Formatted;
     }
 
     // ── 上下文重置 ──

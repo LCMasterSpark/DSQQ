@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace DSQQ.Models;
@@ -899,4 +900,313 @@ public sealed class SocialV2Config
     // 会话模式（与 /api/config/session-mode 同源）。
     [JsonPropertyName("sessionMode")]
     public string? SessionMode { get; set; }
+}
+
+
+// ── 二代仿真（/api/socialV2/*）──
+//
+// 这些端点原先只服务于 AI 的工具调用；控制台侧能读到的是"她现在的状态"，
+// 排查"她为什么不说话"时要看的就是这一组。
+
+// GET /api/socialV2/states
+public sealed class SocialV2StatesResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("conversations")]
+    public List<SocialV2Conversation> Conversations { get; set; } = [];
+}
+
+// 单个会话的二代状态（state 与 states 里的条目同构）。
+public sealed class SocialV2Conversation
+{
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    [JsonPropertyName("wakeConfig")]
+    public SocialV2WakeConfig? WakeConfig { get; set; }
+
+    // 唤醒保障标志：它们决定"她会不会漏掉消息"。
+    [JsonPropertyName("wakeSafety")]
+    public SocialV2WakeSafety? WakeSafety { get; set; }
+
+    [JsonPropertyName("unreadCount")]
+    public int UnreadCount { get; set; }
+
+    [JsonPropertyName("recentCount")]
+    public int RecentCount { get; set; }
+
+    // 上一次被唤醒的原因，例如 "keyword:大肥鱼"。
+    [JsonPropertyName("lastWakeReason")]
+    public string? LastWakeReason { get; set; }
+
+    [JsonPropertyName("lastAiReplyAt")]
+    public long? LastAiReplyAt { get; set; }
+
+    // 列表里显示：会话 + 唤醒模式 + 未读。
+    public string Display
+    {
+        get
+        {
+            var mode = WakeConfig?.Mode == "active" ? "活跃" : "潜水";
+            var unread = UnreadCount > 0 ? $"  未读 {UnreadCount}" : string.Empty;
+            return $"{Key}　[{mode}]{unread}";
+        }
+    }
+}
+
+// 唤醒配置。
+public sealed class SocialV2WakeConfig
+{
+    [JsonPropertyName("mode")]
+    public string? Mode { get; set; }
+
+    [JsonPropertyName("infinite")]
+    public bool Infinite { get; set; }
+
+    [JsonPropertyName("sleepUntil")]
+    public string? SleepUntil { get; set; }
+
+    [JsonPropertyName("triggers")]
+    public SocialV2Triggers? Triggers { get; set; }
+
+    [JsonPropertyName("batchWindowMs")]
+    public long BatchWindowMs { get; set; }
+
+    [JsonPropertyName("lastWakeAt")]
+    public long? LastWakeAt { get; set; }
+
+    [JsonPropertyName("wakeCount")]
+    public int WakeCount { get; set; }
+
+    // 被唤醒但没做任何动作的次数 —— 偏高说明触发条件太宽。
+    [JsonPropertyName("noActionCount")]
+    public int NoActionCount { get; set; }
+
+    [JsonPropertyName("confirmedAt")]
+    public long? ConfirmedAt { get; set; }
+
+    [JsonPropertyName("confirmedBy")]
+    public string? ConfirmedBy { get; set; }
+
+    public string Display
+    {
+        get
+        {
+            var mode = Mode == "active" ? "活跃" : "潜水";
+            var duration = Infinite ? "无限" : $"有限{(string.IsNullOrWhiteSpace(SleepUntil) ? string.Empty : " 至 " + SleepUntil)}";
+            var parts = new List<string> { $"模式：{mode}（{duration}）" };
+
+            if (Triggers is not null)
+            {
+                parts.Add($"触发：{Triggers.Display}");
+            }
+
+            parts.Add($"唤醒 {WakeCount} 次，其中 {NoActionCount} 次没动作");
+
+            if (LastWakeAt is > 0)
+            {
+                parts.Add($"上次唤醒 {DateTimeOffset.FromUnixTimeMilliseconds(LastWakeAt.Value).ToLocalTime():MM-dd HH:mm}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ConfirmedBy))
+            {
+                parts.Add($"由 {ConfirmedBy} 设置");
+            }
+
+            return string.Join("　", parts);
+        }
+    }
+}
+
+// 唤醒触发条件。
+public sealed class SocialV2Triggers
+{
+    [JsonPropertyName("atMention")]
+    public bool AtMention { get; set; }
+
+    [JsonPropertyName("nameMention")]
+    public bool NameMention { get; set; }
+
+    [JsonPropertyName("speakerIds")]
+    public List<string> SpeakerIds { get; set; } = [];
+
+    [JsonPropertyName("keywords")]
+    public List<string> Keywords { get; set; } = [];
+
+    [JsonPropertyName("question")]
+    public bool Question { get; set; }
+
+    [JsonPropertyName("poke")]
+    public bool Poke { get; set; }
+
+    [JsonPropertyName("anyMessage")]
+    public bool AnyMessage { get; set; }
+
+    [JsonPropertyName("probability")]
+    public double Probability { get; set; }
+
+    public string Display
+    {
+        get
+        {
+            var parts = new List<string>();
+
+            if (AtMention) { parts.Add("@"); }
+            if (NameMention) { parts.Add("名字"); }
+            if (Keywords.Count > 0) { parts.Add($"关键词×{Keywords.Count}"); }
+            if (Question) { parts.Add("提问"); }
+            if (Poke) { parts.Add("拍一拍"); }
+            if (SpeakerIds.Count > 0) { parts.Add($"指定成员×{SpeakerIds.Count}"); }
+            if (AnyMessage) { parts.Add("任意消息"); }
+            if (Probability > 0) { parts.Add($"概率 {Probability:0.##}"); }
+
+            return parts.Count == 0 ? "（无）" : string.Join("/", parts);
+        }
+    }
+}
+
+// 唤醒保障标志。
+public sealed class SocialV2WakeSafety
+{
+    // 硬保障：一定有兜底唤醒。
+    [JsonPropertyName("hard")]
+    public bool Hard { get; set; }
+
+    // 限时保障。
+    [JsonPropertyName("timed")]
+    public bool Timed { get; set; }
+
+    [JsonPropertyName("soft")]
+    public bool Soft { get; set; }
+
+    // 是否保证能被唤醒。
+    [JsonPropertyName("guaranteed")]
+    public bool Guaranteed { get; set; }
+
+    // 配置是否已陈旧（长期没更新）。
+    [JsonPropertyName("stale")]
+    public bool Stale { get; set; }
+
+    public string Display
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Hard) { parts.Add("硬保障"); }
+            if (Timed) { parts.Add("限时"); }
+            if (Soft) { parts.Add("软保障"); }
+            if (Guaranteed) { parts.Add("保证可唤醒"); }
+            if (Stale) { parts.Add("配置已陈旧"); }
+            return parts.Count == 0 ? "（无标志）" : string.Join("　", parts);
+        }
+    }
+}
+
+// GET /api/socialV2/memory
+public sealed class SocialV2MemoryResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    [JsonPropertyName("category")]
+    public string? Category { get; set; }
+
+    // 已渲染成人话的记忆全文 —— 界面直接显示它。
+    [JsonPropertyName("formatted")]
+    public string? Formatted { get; set; }
+
+    // 结构化原文；结构随记忆类别而变，保留原始 JSON 不做建模。
+    [JsonPropertyName("raw")]
+    public JsonElement? Raw { get; set; }
+}
+
+// GET /api/socialV2/tool-log
+public sealed class SocialV2ToolLogResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("entries")]
+    public List<SocialV2ToolLogEntry> Entries { get; set; } = [];
+}
+
+// 一条工具调用记录。
+// 服务端写两种：{type:'call',…,tool,args} 与 {type:'result',…,tool,ok,error}。
+public sealed class SocialV2ToolLogEntry
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("time")]
+    public string? Time { get; set; }
+
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    [JsonPropertyName("sessionId")]
+    public string? SessionId { get; set; }
+
+    [JsonPropertyName("tool")]
+    public string? Tool { get; set; }
+
+    [JsonPropertyName("args")]
+    public JsonElement? Args { get; set; }
+
+    [JsonPropertyName("ok")]
+    public bool? Ok { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    public string Display
+    {
+        get
+        {
+            var time = string.Empty;
+            if (DateTimeOffset.TryParse(Time, out var parsed))
+            {
+                time = parsed.ToLocalTime().ToString("HH:mm:ss");
+            }
+
+            var kind = Type == "result" ? (Ok == true ? "结果 ✓" : "结果 ✗") : "调用";
+            var detail = Args is { ValueKind: not JsonValueKind.Undefined } args
+                ? args.GetRawText()
+                : Error ?? string.Empty;
+
+            // 参数可能很长；截断是为了让一行放得下，完整内容仍可从日志文件取。
+            if (detail.Length > 160)
+            {
+                detail = detail[..160] + "…";
+            }
+
+            return $"{time} [{kind}] {Tool}　{detail}".TrimEnd();
+        }
+    }
+}
+
+// GET /api/socialV2/feedback
+public sealed class SocialV2FeedbackResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    // 条目结构随来源而变，保留原始 JSON。
+    [JsonPropertyName("entries")]
+    public List<JsonElement> Entries { get; set; } = [];
+}
+
+// GET /api/socialV2/activity
+public sealed class SocialV2ActivityResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    // 二代仿真是否被暂停。
+    [JsonPropertyName("paused")]
+    public bool Paused { get; set; }
 }
