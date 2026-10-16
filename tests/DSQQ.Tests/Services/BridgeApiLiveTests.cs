@@ -153,4 +153,43 @@ public sealed class BridgeApiLiveTests
         var mode = await client.GetSessionModeAsync();
         Assert.Equal(mode?.SessionMode, social.Config!.SessionMode);
     }
+
+    [Fact]
+    public async Task 真实的_token_汇总应能解析出分项计数()
+    {
+        if (!await BridgeIsUpAsync())
+        {
+            return;
+        }
+
+        using var client = new BridgeApiClient(BaseUri, TimeSpan.FromSeconds(10));
+        var summary = await client.GetTokenSummaryAsync();
+
+        Assert.NotNull(summary);
+        Assert.NotNull(summary!.Totals);
+
+        // 核心断言：分项计数在 totals.buckets 里面。
+        // 早先按 totals.cacheHit / totals.total / 顶层 cost 建模，四个数字全取不到，
+        // 界面那一块就恒定显示 0 —— 而同一页下面的消耗走势读的是另一个端点、数据是真的。
+        Assert.NotNull(
+            summary.Totals!.Buckets);
+
+        // 有消耗时两处必须自洽：合计不可能小于命中 + 未命中。
+        var buckets = summary.Totals.Buckets!;
+        var hit = buckets.CacheHit ?? 0;
+        var miss = buckets.CacheMiss ?? 0;
+        var output = buckets.Output ?? 0;
+        var total = summary.Totals.TotalTokens ?? 0;
+
+        Assert.True(
+            total >= hit + miss + output,
+            $"合计 token 小于分项之和，字段很可能取错了：total={total} "
+            + $"cacheHit={hit} cacheMiss={miss} output={output}");
+
+        // 档位必须能取到 —— 取不到界面上就会写"未知"。
+        Assert.NotNull(summary.NowTier);
+        Assert.False(
+            string.IsNullOrWhiteSpace(summary.NowTier!.TierLabel),
+            "nowTier.tierLabel 为空 —— 字段名可能不匹配");
+    }
 }

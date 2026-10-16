@@ -164,6 +164,22 @@ public sealed class BridgeSessionEntry
 }
 
 // 桥接 /api/tokens/summary 的响应（只取展示需要的字段）。
+//
+// 形状按实测响应写死，别再按"看起来应该是什么样"猜：
+//   { ok, generatedAt, priceVersion, currency, symbol,
+//     nowTier: { model, label, tier, tierLabel, ... },
+//     priceTable: {...},
+//     totals: { buckets: { cacheHit, cacheMiss, cacheWrite, output, reasoning },
+//               cost, attributedCost, unattributedCost, byTier:{peak,off},
+//               turns, steps, conversations, estimated,
+//               totalTokens, inputTokens, cacheHitRate,
+//               avgCostPerTurn, avgCostPerStep },
+//     conversations: [ { key, sessionIds, sessions, buckets, cost, ..., models } ],
+//     ledger: { file, journalLines, maxLines, droppedLines, sessions, ... } }
+//
+// 这里踩过一次坑：早先按「totals.cacheHit / totals.total / 顶层 cost 对象」建模，
+// 于是那一块永远显示 0 —— 而同一页下面的消耗走势读的是另一个端点、数据是真的，
+// 两块并排放着格外刺眼。**"读回来是空的"先怀疑外壳。**
 public sealed class TokenSummary
 {
     // 币种符号。
@@ -177,10 +193,6 @@ public sealed class TokenSummary
     // 累计用量。
     [JsonPropertyName("totals")]
     public TokenTotals? Totals { get; set; }
-
-    // 折算金额。
-    [JsonPropertyName("cost")]
-    public TokenCost? Cost { get; set; }
 }
 
 // 计价档位。
@@ -199,8 +211,52 @@ public sealed class TokenTier
     public string? Label { get; set; }
 }
 
-// 累计用量。
+// 累计用量。字段名与桥接 tokenLedger.summary() 的返回一一对应。
 public sealed class TokenTotals
+{
+    // 分项计数。**注意这一层**：cacheHit / cacheMiss / output 都在 buckets 里面，
+    // 不在 totals 顶层。早先按顶层取，于是四项全是 0。
+    [JsonPropertyName("buckets")]
+    public TokenBuckets? Buckets { get; set; }
+
+    // 输入 + 输出的总 token。
+    [JsonPropertyName("totalTokens")]
+    public long? TotalTokens { get; set; }
+
+    // 输入 token（命中 + 未命中 + 写入）。
+    [JsonPropertyName("inputTokens")]
+    public long? InputTokens { get; set; }
+
+    // 缓存命中率（0~1）。
+    [JsonPropertyName("cacheHitRate")]
+    public double? CacheHitRate { get; set; }
+
+    // 折算金额（本币）。注意是数字，不是对象。
+    [JsonPropertyName("cost")]
+    public decimal? Cost { get; set; }
+
+    // 归因到具体会话的金额。
+    [JsonPropertyName("attributedCost")]
+    public decimal? AttributedCost { get; set; }
+
+    // 轮次与步数。
+    [JsonPropertyName("turns")]
+    public int? Turns { get; set; }
+
+    [JsonPropertyName("steps")]
+    public int? Steps { get; set; }
+
+    // 参与统计的会话数。
+    [JsonPropertyName("conversations")]
+    public int? Conversations { get; set; }
+
+    // 金额是否为估算（桥接拿不到真实计费时按价目表折算）。
+    [JsonPropertyName("estimated")]
+    public bool? Estimated { get; set; }
+}
+
+// token 分项计数。
+public sealed class TokenBuckets
 {
     // 缓存命中的输入 token。
     [JsonPropertyName("cacheHit")]
@@ -210,21 +266,17 @@ public sealed class TokenTotals
     [JsonPropertyName("cacheMiss")]
     public long? CacheMiss { get; set; }
 
+    // 写入缓存的 token。
+    [JsonPropertyName("cacheWrite")]
+    public long? CacheWrite { get; set; }
+
     // 输出 token。
     [JsonPropertyName("output")]
     public long? Output { get; set; }
 
-    // 总 token。
-    [JsonPropertyName("total")]
-    public long? Total { get; set; }
-}
-
-// 金额折算。
-public sealed class TokenCost
-{
-    // 总金额。
-    [JsonPropertyName("total")]
-    public decimal? Total { get; set; }
+    // 推理 token。
+    [JsonPropertyName("reasoning")]
+    public long? Reasoning { get; set; }
 }
 
 // 桥接 /api/config/persona 的响应。

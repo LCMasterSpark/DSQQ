@@ -311,14 +311,50 @@ public partial class BridgeConsoleView : UserControl
         }
         else
         {
+            // 分项计数在 totals.buckets 里面，不在 totals 顶层 —— 详见 TokenTotals 的注释。
             var totals = summary.Totals;
-            TokenSummaryText.Text =
-                $"计价档位 : {summary.NowTier?.TierLabel ?? "未知"}（{summary.NowTier?.Label ?? "?"}）{Environment.NewLine}"
-                + $"输入命中 : {totals?.CacheHit ?? 0:N0}{Environment.NewLine}"
-                + $"输入未命中: {totals?.CacheMiss ?? 0:N0}{Environment.NewLine}"
-                + $"输出     : {totals?.Output ?? 0:N0}{Environment.NewLine}"
-                + $"合计     : {totals?.Total ?? 0:N0} tokens{Environment.NewLine}"
-                + $"折算金额 : {summary.Symbol}{summary.Cost?.Total ?? 0:0.####}";
+            var buckets = totals?.Buckets;
+            var symbol = summary.Symbol ?? "¥";
+            var tier = summary.NowTier?.TierLabel ?? "未知";
+            var model = summary.NowTier?.Label ?? "?";
+
+            var lines = new List<string>
+            {
+                $"计价档位 : {tier}（{model}）",
+                $"输入命中 : {buckets?.CacheHit ?? 0:N0}",
+                $"输入未命中: {buckets?.CacheMiss ?? 0:N0}",
+            };
+
+            // 缓存写入与推理 token 通常为 0，非零时才占一行，避免把常用信息挤下去。
+            if ((buckets?.CacheWrite ?? 0) > 0)
+            {
+                lines.Add($"缓存写入 : {buckets!.CacheWrite ?? 0:N0}");
+            }
+
+            if ((buckets?.Reasoning ?? 0) > 0)
+            {
+                lines.Add($"推理     : {buckets!.Reasoning ?? 0:N0}");
+            }
+
+            lines.Add($"输出     : {buckets?.Output ?? 0:N0}");
+            lines.Add($"合计     : {totals?.TotalTokens ?? 0:N0} tokens");
+
+            if (totals?.CacheHitRate is { } rate)
+            {
+                lines.Add($"缓存命中率: {rate * 100:0.##}%");
+            }
+
+            if (totals?.Turns is { } turns && totals.Steps is { } steps)
+            {
+                lines.Add($"轮次     : {turns:N0}（{steps:N0} 步 / {totals.Conversations ?? 0} 个会话）");
+            }
+
+            // 金额是桥接按价目表折算的估算值时就说明，别让用户当成账单。
+            var estimateNote = totals?.Estimated == true ? "　（按价目表折算）" : string.Empty;
+            lines.Add($"折算金额 : {symbol}{totals?.Cost ?? 0:0.####}{estimateNote}");
+            lines.Add("（以上为账本全部，不限时段）");
+
+            TokenSummaryText.Text = string.Join(Environment.NewLine, lines);
         }
 
         var status = await _client.GetStatusAsync();
