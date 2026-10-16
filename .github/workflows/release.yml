@@ -122,6 +122,9 @@ jobs:
       # summary 是渲染在 job 页面里的，公开仓库无需令牌即可查看。
       - name: 构建便携包
         shell: pwsh
+        env:
+          # 英文 Windows 的 Python 默认用 cp1252 打 stdout，中文会直接抛异常。
+          PYTHONIOENCODING: utf-8
         run: |
           $log = Join-Path $env:RUNNER_TEMP 'portable-build.log'
 

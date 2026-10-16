@@ -56,6 +56,23 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+# ── 让中文输出在英文 Windows 上也能打印 ──
+#
+# Python 在 Windows 上把 stdout 绑到控制台的本地代码页：中文 Windows 是 cp936
+# （能编码中文），而 **英文 Windows 是 cp1252**（不能）。本脚本满屏都是中文，
+# 于是在 CI 上第一行 `print(f"构建 {name}")` 就抛
+#     UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-1
+# —— 而且它发生在做任何事之前，从外部看只表现为"退出码 1"，极难猜到。
+#
+# 这不是排版问题，是让脚本能在非中文 Windows 上跑起来的前提。
+# 顺带在 workflow 里也设了 PYTHONIOENCODING=utf-8，两处一起兜。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        # 极老的 Python 或被重定向到不支持 reconfigure 的对象时忽略。
+        pass
+
 # ── 路径 ────────────────────────────────────────────────────────────────
 DSQQ_ROOT = Path(__file__).resolve().parent.parent
 DIST = DSQQ_ROOT / "packaging" / "dist"
