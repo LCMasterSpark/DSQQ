@@ -50,6 +50,12 @@ public partial class BridgeConsoleView : UserControl
     // 当前是否处于静默模式（由按钮切换并本地记住，避免每次都要问桥接）。
     private bool _roleModeIsSilent;
 
+    // 当前运行模式（chat / reserved2 …）。审计要用它判断"一代指令"是否算冲突。
+    private string? _currentMode;
+
+    // 桥接下发的角色卡注入上限；0 表示还没取到，界面上退化为 6000。
+    private int _roleInjectLimit;
+
     // 初始化页面。
     // 参数 services：应用服务宿主。
     // 异常 ArgumentNullException：为 null。
@@ -161,6 +167,8 @@ public partial class BridgeConsoleView : UserControl
         await LoadCostTrendAsync();
         await LoadRolesAsync();
         await LoadSlangAsync();
+
+        UpdateIdentityAudit();
 
         StatusText.Text = $"已载入（{DateTime.Now:HH:mm:ss}）";
         HintText.Text = $"桥接地址：{_services.Endpoints.BridgeConsole}";
@@ -308,6 +316,11 @@ public partial class BridgeConsoleView : UserControl
 
         var status = await _client.GetStatusAsync();
         ActivityText.Text = string.IsNullOrWhiteSpace(status?.Activity) ? "（暂无活动）" : status.Activity;
+
+        _currentMode = status?.Mode;
+
+        var roles = await _client.GetRolesAsync();
+        _roleInjectLimit = roles?.Limits?.InjectMaxChars ?? 0;
 
         _sessionsSnapshot = await _client.GetSessionsAsync();
         _sessions.Clear();
@@ -897,6 +910,85 @@ public partial class BridgeConsoleView : UserControl
         await LoadPresetAsync();
         PresetStatusText.Text = $"已保存 {preset}；需重启 DSH 生效。";
     }
+    // ── 「她是谁」一致性审计 ──
+
+    // 刷新三层的一致性提示与上下文占用。
+    //
+    // 这里读的是**界面上当前的内容**而不是桥接里的值：用户正在编辑时也想立刻看到
+    // 「改完会不会冲突、占多大」，而不是等保存后才知道。
+    private void UpdateIdentityAudit()
+    {
+        // 人设字段（key 与桥接 fields[].key 一致）。
+        var personaValues = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["name"] = PersonaNameBox.Text,
+            ["tone"] = PersonaToneBox.Text,
+            ["style"] = PersonaStyleBox.Text,
+            ["forbid"] = PersonaForbidBox.Text,
+            ["extra"] = PersonaExtraBox.Text,
+        };
+
+        // 黑话表：桥接只注入排名靠前的若干条（cfg.slang.injectMax，默认 8），
+        // 不是把整个词库都塞进去 —— 早先按"全部词条 × 每条估 40 字"算，
+        // 在有 130+ 条候选时会高估到 5000+ 字，让预算看起来吓人。
+        var slangTopN = Math.Min(_allSlang.Count(e => !string.IsNullOrWhiteSpace(e.Content)), 8);
+        var slangChars = slangTopN * 40;
+
+        var input = new Models.IdentityAuditor.Input(
+            Persona: new Models.PersonaConfig { Enabled = PersonaEnabledCheck.IsChecked == true },
+            PersonaValues: personaValues,
+            RoleName: RoleList.SelectedItem is RoleSummary s ? s.Name : null,
+            RoleContent: RoleContentBox.Text,
+            SimPrompt: PresetContentBox.Text,
+            SimPromptPreset: PresetCombo.SelectedItem?.ToString(),
+            Mode: null,                       // 由 ApplyStatus 缓存的当前模式填
+            SlangChars: slangChars);
+
+        // 当前运行模式影响「一代指令」是否算冲突，必须带上。
+        input = input with { Mode = _currentMode };
+
+        var report = Models.IdentityAuditor.Audit(input);
+
+        IdentityWarningText.Text = report.Warnings.Count == 0
+            ? "✓ 没发现冲突。"
+            : string.Join(Environment.NewLine + Environment.NewLine, report.Warnings.Select(w => "⚠ " + w));
+        IdentityWarningText.Foreground = report.Warnings.Count == 0
+            ? System.Windows.Media.Brushes.Gray
+            : new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0xD1, 0x34, 0x38));
+
+        var b = report.Budget;
+        var roleLimit = _roleInjectLimit > 0 ? _roleInjectLimit : 6000;
+        var presetLimit = 10000;   // 预设模板约 10 KB，按一个便于比较的参考值
+
+        IdentityBudgetText.Text =
+            $"上下文占用（字符）：人设 {b.PersonaChars} · 角色卡 {b.RoleChars} · 提示词 {b.SimPromptChars}"
+            + (b.SlangChars > 0 ? $" · 黑话表约 {b.SlangChars}" : string.Empty)
+            + $"　合计约 {b.TotalChars:N0}。角色卡与提示词每条唤醒都会进入上下文，"
+            + "角色卡越大每条消息的成本越高。";
+
+        SetBudgetBar(PersonaBudgetBar, PersonaBudgetText, b.PersonaChars, b.PersonaLimit);
+        SetBudgetBar(RoleBudgetBar, RoleBudgetText, b.RoleChars, roleLimit);
+        SetBudgetBar(PresetBudgetBar, PresetBudgetText, b.SimPromptChars, presetLimit);
+    }
+
+    // 更新一条占用条：超限变红、接近变黄、正常保持主题色。
+    private static void SetBudgetBar(
+        System.Windows.Controls.ProgressBar bar, System.Windows.Controls.TextBlock label, int used, int limit)
+    {
+        var percent = limit <= 0 ? 0 : Math.Min(100, (int)Math.Round(used * 100.0 / limit));
+        bar.Value = percent;
+        label.Text = limit <= 0
+            ? $"{used} 字"
+            : $"{used} / {limit} 字（{percent}%）";
+
+        bar.Foreground = used > limit
+            ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xD1, 0x34, 0x38))
+            : percent >= 80
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xCA, 0x8A, 0x04))
+                : AccentBrush;
+    }
+
     // ── 上下文重置 ──
 
     // 重置选中会话的上下文：清掉它的 DSH 映射并重建，相当于让她忘掉这段对话。
@@ -1028,10 +1120,9 @@ public partial class BridgeConsoleView : UserControl
 
     // ── 消耗走势 ──
 
-    // 走势表格行。
-    public sealed record CostRow(string TimeText, string TierText, string TokensText, string CostText, string TurnsText);
-
-    // 读取消耗走势并只显示有消耗的桶。
+    // 读取消耗走势。
+    // 纯计算部分（筛选有消耗的桶、汇总、格式化）已抽到 Models.CostTrendBuilder，
+    // 这里只负责取数与填表 —— 这样那段逻辑能单测，本文件也不再继续变长。
     private async Task LoadCostTrendAsync()
     {
         var series = await _client.GetTokenSeriesAsync();
@@ -1041,28 +1132,9 @@ public partial class BridgeConsoleView : UserControl
             return;
         }
 
-        // 24 小时 × 半小时 = 48 个桶，绝大多数是空的；只列有消耗的，
-        // 否则表格里全是 0，真正花钱的时段反而要找半天。
-        var rows = series.Buckets
-            .Where(b => b.Tokens > 0 || b.Cost > 0 || b.Turns > 0)
-            .Select(b => new CostRow(
-                DateTimeOffset.FromUnixTimeMilliseconds(b.Time).ToLocalTime().ToString("MM-dd HH:mm"),
-                b.Tier == "peak" ? "高峰" : "空闲",
-                b.Tokens.ToString("N0"),
-                $"{series.Symbol}{b.Cost:0.######}",
-                b.Turns.ToString()))
-            .ToList();
-
-        CostTrendGrid.ItemsSource = rows;
-
-        var totalCost = series.Buckets.Sum(b => b.Cost);
-        var totalTokens = series.Buckets.Sum(b => b.Tokens);
-        var peakBuckets = series.Buckets.Count(b => b.Tier == "peak" && (b.Tokens > 0 || b.Cost > 0));
-
-        CostTrendHintText.Text = rows.Count == 0
-            ? "最近 24 小时没有消耗记录。"
-            : $"共 {rows.Count} 个时段有消耗，合计 {totalTokens:N0} tokens / {series.Symbol}{totalCost:0.##}"
-              + $"；其中有消耗的高峰时段 {peakBuckets} 个（高峰按倍率计价）。";
+        var result = Models.CostTrendBuilder.Build(series);
+        CostTrendGrid.ItemsSource = result.Rows;
+        CostTrendHintText.Text = result.Summary;
     }
 
     // ── 会话与上下文 ──
@@ -1422,6 +1494,11 @@ public partial class BridgeConsoleView : UserControl
 
     private static readonly System.Windows.Media.Brush InvalidBrush =
         new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xD1, 0x34, 0x38));
+
+    // 占用条的正常色。用固定值而不是查 MahApps 的资源键 ——
+    // 键名一旦变化，Resources[...] 会返回 null 并在运行时抛空引用，而这里只是显示逻辑。
+    private static readonly System.Windows.Media.Brush AccentBrush =
+        new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0x78, 0xD4));
 
     // 收集并保存改动。返回是否保存成功（部分失败时把桥接原话显示出来）。
     // 参数 batchLabel：整组应用时的说明（预设名），用于把成功提示写得更明确。
