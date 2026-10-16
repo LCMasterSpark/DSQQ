@@ -2161,10 +2161,27 @@ public partial class BridgeConsoleView : UserControl
         Bool,
     }
 
+    // 字段的作用范围。**这一页最容易误解的地方**：
+    // 同样是"保存成功、回读也对"，有的字段下一刻就改变行为，有的根本碰不到已有会话。
+    // 桥接侧的实现决定了这件事，界面必须说清楚，否则用户只会得出"改了不生效"。
+    private enum ActivityScope
+    {
+        // 每次用到时现读全局配置 —— 保存后立刻生效，对已有会话一样有效。
+        Global,
+
+        // 只写进「新会话的默认唤醒配置」。已有会话各自保留自己的 wakeConfig，
+        // 除非它仍是 confirmedBy === 'default'（从没被 AI 或管理员设过）。
+        NewConversation,
+
+        // 只在 AI 请求「有限时长」潜水时充当上下限。会话处于「无限期」潜水时永远用不到。
+        FiniteSleepOnly,
+    }
+
     // 一个可编辑字段：界面控件 ↔ JSON 键 ↔ 校验范围。
     // 参数 Accessor：取文本框；Kind 为 Bool 时该文本框可省略。
     // 参数 Unit：界面单位。时间类字段用 "s"（秒），桥接实际收毫秒，读写时自动换算 ——
     //   让用户填 300 而不是 300000，这是这一页最主要的易用性问题。
+    // 参数 Scope：见 ActivityScope，决定保存后这句提示怎么写。
     private sealed record ActivityField(
         Func<TextBox> Accessor,
         string JsonKey,
@@ -2173,8 +2190,19 @@ public partial class BridgeConsoleView : UserControl
         int Max,
         string Kind,
         string Unit = "",
-        CheckBox? Toggle = null)
+        CheckBox? Toggle = null,
+        ActivityScope Scope = ActivityScope.Global)
     {
+        // 这个字段是否对"已经设过唤醒配置的会话"无效。
+        public bool NeedsScopeWarning => Scope != ActivityScope.Global;
+
+        // 范围提示后面缀上的作用域说明。
+        public string ScopeNote => Scope switch
+        {
+            ActivityScope.NewConversation => "　·　只影响新会话",
+            ActivityScope.FiniteSleepOnly => "　·　仅「有限时长」潜水时生效",
+            _ => string.Empty,
+        };
         // 输入框里的数字所允许的范围（秒类字段的边界要换算回显示单位）。
         public int DisplayMin => Unit == "s" ? Min / 1000 : Min;
 
@@ -2192,7 +2220,7 @@ public partial class BridgeConsoleView : UserControl
 
                 var unit = Models.ActivityUnitConverter.UnitLabel(Unit);
                 var extra = JsonKey == "sleepMaxMs" ? "（0 = 不限制）" : string.Empty;
-                return $"{unit} · {DisplayMin} ~ {DisplayMax}{extra}";
+                return $"{unit} · {DisplayMin} ~ {DisplayMax}{extra}{ScopeNote}";
             }
         }
 
@@ -2204,12 +2232,17 @@ public partial class BridgeConsoleView : UserControl
     private List<ActivityField> ActivityFields() =>
     [
         // 时间类用秒（桥接收毫秒，读写自动换算），其余为次数或毫秒。
-        new(() => SleepMinBox, "sleepMinMs", "最短潜水", 0, 86_400_000, "Int", "s"),
-        new(() => SleepMaxBox, "sleepMaxMs", "最长潜水", 0, 86_400_000, "Int", "s"),
+        // 作用域依据桥接源码（D:\qq-bridge\src\bridge.js）：
+        //   · sleepMinMs/sleepMaxMs  —— L5466-5469 现读全局，但只在 AI 请求有限时长时钳制
+        //   · batchWindowMs          —— L10875 用的是 st.wakeConfig.batchWindowMs（会话自己的），
+        //                               全局值只在 L8662 的 defaultWakeConfigV2() 里当新会话默认值
+        //   · 其余字段都是调用点现读 cfg.socialV2.*，保存即生效
+        new(() => SleepMinBox, "sleepMinMs", "最短潜水", 0, 86_400_000, "Int", "s", null, ActivityScope.FiniteSleepOnly),
+        new(() => SleepMaxBox, "sleepMaxMs", "最长潜水", 0, 86_400_000, "Int", "s", null, ActivityScope.FiniteSleepOnly),
         new(() => MaxWakeHourBox, "maxWakePerHour", "每小时最多唤醒", 0, 1000, "Int"),
         new(() => MaxWakeMinuteBox, "maxWakePerMinute", "每分钟最多唤醒", 0, 100, "Int"),
         new(() => PreSleepWaitBox, "preSleepWaitMs", "睡前观察窗口", 0, 3_600_000, "Int", "s"),
-        new(() => BatchWindowBox, "batchWindowMs", "多条消息合并窗口", 1_000, 600_000, "Int", "s"),
+        new(() => BatchWindowBox, "batchWindowMs", "多条消息合并窗口", 1_000, 600_000, "Int", "s", null, ActivityScope.NewConversation),
         new(() => MaxMessageCharsBox, "maxMessageChars", "单条消息最大字数", 1, 5000, "Int"),
         new(() => MaxSendHourBox, "maxSendPerHour", "每小时最多发送", 0, 10_000, "Int"),
         new(() => MaxSendMinuteBox, "maxSendPerMinute", "每分钟最多发送", 0, 1000, "Int"),
@@ -2483,21 +2516,26 @@ public partial class BridgeConsoleView : UserControl
             return false;
         }
 
-        var changedKeys = new HashSet<string>(changes.Keys, StringComparer.Ordinal);
         var presetName = MatchActivityPreset(await _client.GetActivityConfigAsync() ?? baseline);
 
-        ActivityHintText.Text = batchLabel is null
-            ? $"已保存 {changes.Count} 项（即时生效）。"
-            : $"已应用预设「{batchLabel}」，共写入 {changes.Count} 项。";
+        // 改了「只影响新会话」或「仅有限时长潜水时生效」的字段时，必须说清楚，
+        // 否则用户看到"已保存"却观察不到任何变化 —— 这正是这一页最初被反馈"改了不生效"的原因。
+        var limited = ActivityFields()
+            .Where(f => changes.ContainsKey(f.JsonKey) && f.NeedsScopeWarning)
+            .Select(f => $"「{f.Label}」")
+            .ToList();
+        var scopeNote = limited.Count == 0
+            ? string.Empty
+            : $"　注意：{string.Join("、", limited)} 对已经设过唤醒配置的会话不起作用"
+              + "（每个会话各自保留自己的配置，可在「二代仿真」页里逐会话改）。";
 
         await LoadActivityAsync();   // 取回桥接侧的最终值，顺带清掉改动集
 
         // LoadActivityAsync 会把提示改成"已载入"，这里补回本次操作的结果。
         ActivityHintText.Text = batchLabel is null
-            ? $"已保存 {changes.Count} 项（即时生效；当前 {presetName ?? "自定义"}）。"
-            : $"已应用预设「{batchLabel}」，共写入 {changes.Count} 项。";
+            ? $"已保存 {changes.Count} 项（即时生效；当前 {presetName ?? "自定义"}）。{scopeNote}"
+            : $"已应用预设「{batchLabel}」，共写入 {changes.Count} 项。{scopeNote}";
 
-        _ = changedKeys;
         return true;
     }
 

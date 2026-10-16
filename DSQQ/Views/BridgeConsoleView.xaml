@@ -476,8 +476,17 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.75"
-                               Text="时间为「秒」、频率为「次」、间隔为「毫秒」，见各行的单位标注。保存是增量提交：只写入改动过的项，未改动的保持现状；联动关系由桥接校验（例如最短潜水不能大于最长潜水）。" />
+                    <!-- 这一页的字段作用范围不一样，必须在最上面说清楚：
+                         用户看到"已保存"却观察不到变化时，只会得出"改了不生效"。
+                         （作用域判定依据桥接源码，见 xaml.cs 里 ActivityScope 的注释。）
+                         两段说明放进 StackPanel 而不是同行的两个元素 —— 同行的元素在窄窗口下
+                         会互相压住，本项目已经因为这个吃过两次亏。 -->
+                    <StackPanel Grid.Row="0">
+                        <TextBlock TextWrapping="Wrap" Opacity="0.75"
+                                   Text="时间为「秒」、频率为「次」、间隔为「毫秒」，见各行的单位标注。保存是增量提交：只写入改动过的项，未改动的保持现状；联动关系由桥接校验（例如最短潜水不能大于最长潜水）。" />
+                        <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.75"
+                                   Text="注意各行的作用范围：多数项目改完立刻对每个会话生效；「多条消息合并窗口」只作为新会话的默认值；「最短/最长潜水」只在 AI 请求「有限时长」潜水时充当上下限。已经设过唤醒配置的会话各自保留自己的那份（「二代仿真」页里可逐会话查看与修改）。" />
+                    </StackPanel>
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
                         <TextBlock Text="预设" VerticalAlignment="Center" Opacity="0.75" />
@@ -517,11 +526,11 @@
 
                                         <TextBlock Grid.Row="0" Grid.Column="0" Text="最短潜水" VerticalAlignment="Center" Margin="0,4,10,4" />
                                         <TextBox Grid.Row="0" Grid.Column="1" x:Name="SleepMinBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
-                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="秒 · 0 ~ 86400（0 = 不限制）" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="秒 · 0 ~ 86400（0 = 不限制）　·　仅在「有限时长」潜水时生效" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="1" Grid.Column="0" Text="最长潜水（0 = 不限制）" VerticalAlignment="Center" Margin="0,4,10,4" />
                                         <TextBox Grid.Row="1" Grid.Column="1" x:Name="SleepMaxBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
-                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="秒 · 0 ~ 86400（0 = 不限制）" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="秒 · 0 ~ 86400（0 = 不限制）　·　仅在「有限时长」潜水时生效" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
 
                                         <TextBlock Grid.Row="2" Grid.Column="0" Text="每小时最多唤醒" VerticalAlignment="Center" Margin="0,4,10,4" />
                                         <TextBox Grid.Row="2" Grid.Column="1" x:Name="MaxWakeHourBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
@@ -537,7 +546,7 @@
 
                                         <TextBlock Grid.Row="5" Grid.Column="0" Text="多条消息合并窗口" VerticalAlignment="Center" Margin="0,4,10,4" />
                                         <TextBox Grid.Row="5" Grid.Column="1" x:Name="BatchWindowBox" Width="120" HorizontalAlignment="Left" Margin="0,4" TextChanged="OnActivityFieldChanged" />
-                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="秒 · 1 ~ 600" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
+                                        <TextBlock Grid.Row="5" Grid.Column="2" Text="秒 · 1 ~ 600　·　只影响新会话" VerticalAlignment="Center" Margin="12,4,0,4" Opacity="0.5" />
                                     </Grid>
 
                                     <TextBlock x:Name="RecommendedSleepText" Margin="0,10,0,0" Opacity="0.6" TextWrapping="Wrap" />

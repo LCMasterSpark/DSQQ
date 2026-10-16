@@ -3634,7 +3634,11 @@ function personaInjection() {
           try {
             const configFile = path.join(ROOT, 'config.json');
             const file = readConfigObject(configFile);
-            const sv2 = { ...(file.socialV2 ?? {}) };
+            // 以「启动时已深度合并过默认值」的 cfg.socialV2 为底，而不是文件里的原样内容。
+            // 文件缺 tools/voice/sticker 这些节时（全新安装、从旧版本升上来），用它当底会让
+            // setStickerRemark、sendVoice、voice.enabled 这类「默认关闭」的开关变成 undefined，
+            // 而判定写的是 === false —— undefined 判不出来，一次活跃度保存就把它们静默打开了。
+            const sv2 = { ...(cfg.socialV2 ?? file.socialV2 ?? {}) };
             sv2.wake = {
               ...(sv2.wake ?? {}),
               sleepMinMs: next.sleepMinMs, sleepMaxMs: next.sleepMaxMs,
@@ -3655,6 +3659,13 @@ function personaInjection() {
             file.socialV2 = sv2;
             atomicWriteJson(configFile, file);
             cfg.socialV2 = sv2;   // 热更新，无需重启
+            // 与 /api/socialV2/config 的 POST 分支保持一致：改动属于「新会话默认值」的字段时，
+            // 要把新默认同步给仍在用默认配置的会话。否则控制台回「已保存」，而正在跑的会话
+            // 仍按老值判断（例如多条消息合并窗口用的就是会话自己那份），看起来就是「改了不生效」。
+            const WAKE_DEFAULT_KEYS_ACTIVITY = ['sleepMinMs', 'sleepMaxMs', 'batchWindowMs'];
+            if (WAKE_DEFAULT_KEYS_ACTIVITY.some((k) => Object.prototype.hasOwnProperty.call(body, k))) {
+              refreshAllDefaultWakeConfigsV2();
+            }
             log('控制台：活跃度/发送节奏已更新（潜水 ' + Math.round(next.sleepMinMs / 1000) + 's~'
               + (next.sleepMaxMs ? Math.round(next.sleepMaxMs / 1000) + 's' : '不限')
               + '，每小时最多唤醒 ' + next.maxWakePerHour + ' 次，每小时最多发 ' + next.maxSendPerHour + ' 条）');
