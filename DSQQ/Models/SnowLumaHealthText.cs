@@ -11,6 +11,14 @@ namespace DSQQ.Models;
 // 所以这里宁可啰嗦，也不留空白 —— 每个分支都必须给出一句能读的话。
 public static class SnowLumaHealthText
 {
+    // 只有「连着 且 收得到包」才算健康。
+    //
+    // 没连上**必须**判成不健康。总览页原先写的是 `connected ? Degraded : Online` ——
+    // 没连上反而算正常，于是最严重的那种故障（握手卡死、一个包都收不到）
+    // 在看板上是绿的，只能靠"机器人不说话"来发现。
+    public static bool IsHealthy(BridgeSnowLumaStatus? snowLuma)
+        => snowLuma is { Connected: true, Good: true };
+
     public static string Describe(BridgeSnowLumaStatus? snowLuma)
     {
         if (snowLuma is null)

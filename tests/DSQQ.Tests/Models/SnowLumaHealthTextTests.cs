@@ -133,6 +133,24 @@ public sealed class SnowLumaHealthTextTests
         Assert.Equal("没连上（已经 12 分钟）", SnowLumaHealthText.Describe(status));
     }
 
+    // 总览页/日志页的"是否算异常"用的就是这个判定。
+    // 钉住的是：**没连上不是健康**。原先那里写的是 `connected ? Degraded : Online`，
+    // 没连上反而算正常 —— 本次故障在看板上是绿的，就是这么来的。
+    [Fact]
+    public void 没连上不算健康()
+    {
+        Assert.False(SnowLumaHealthText.IsHealthy(null));
+        Assert.False(SnowLumaHealthText.IsHealthy(new BridgeSnowLumaStatus()));
+        Assert.False(SnowLumaHealthText.IsHealthy(new BridgeSnowLumaStatus { Connected = false, DisconnectedSec = 900 }));
+        Assert.False(SnowLumaHealthText.IsHealthy(new BridgeSnowLumaStatus { Connected = true, Good = false }));
+    }
+
+    [Fact]
+    public void 连着且收得到包才算健康()
+    {
+        Assert.True(SnowLumaHealthText.IsHealthy(new BridgeSnowLumaStatus { Connected = true, Good = true }));
+    }
+
     [Fact]
     public void 任何输入都不能返回空白()
     {

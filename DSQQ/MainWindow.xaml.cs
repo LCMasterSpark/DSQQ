@@ -472,9 +472,8 @@ public partial class MainWindow : Window
             var root = doc.RootElement;
 
             var mode = GetString(root, "mode") ?? "?";
-            var connected = GetBool(root, "snowluma", "connected");
             var account = GetString(root, "snowluma", "account") ?? "—";
-            var good = GetBool(root, "snowluma", "good");
+            var snowLuma = ParseSnowLuma(root);
             var allowGroups = root.TryGetProperty("allowGroups", out var g) && g.ValueKind == JsonValueKind.Array
                 ? g.GetArrayLength()
                 : 0;
@@ -483,16 +482,21 @@ public partial class MainWindow : Window
                 : 0;
 
             // connected（WS 通）与 good（真的收得到 QQ 数据）含义不同：
-            // 后者为假通常意味着 SnowLuma 的原生注入退化，因此单独用"异常"表达。
-            var state = connected && good
+            // 后者为假通常意味着 SnowLuma 的原生注入退化。
+            //
+            // **没连上必须算异常。** 这里原先写的是 `connected ? Degraded : Online` ——
+            // 没连上反而判成 Online。当初大概是为了兼容"桥接还没开始报 connected 这个键"，
+            // 但它恰好盖住了最严重的那种故障：握手卡死、一个包都收不到，
+            // 而总览页一片绿（2026-10-16 实际发生）。
+            var bandState = SnowLumaHealthText.IsHealthy(snowLuma)
                 ? ProbeState.Online
-                : connected ? ProbeState.Degraded : ProbeState.Online;
+                : ProbeState.Degraded;
 
             var detail = $"模式 {mode} · 账号 {account} · 群 {allowGroups} / 私聊 {allowPrivate}";
             return new ProbeResult(
-                state,
+                bandState,
                 detail,
-                new BridgeSnapshot(mode, connected, good, account, allowGroups, allowPrivate));
+                new BridgeSnapshot(mode, snowLuma, account, allowGroups, allowPrivate));
         }
         catch (JsonException)
         {
@@ -525,6 +529,30 @@ public partial class MainWindow : Window
         }
     }
 
+    // 把 /api/status 里的 snowluma 段整段解出来，交给 SnowLumaHealthText 判定。
+    //
+    // 这里不能再手写 `GetBool(root, "snowluma", "connected")`：SnowLuma 的状态压根不是一个布尔值，
+    // 而是「连着 / 没连上多久了 / 连着但一个包都没收到」几种情况，少取任何一个字段都会退化成空白，
+    // 而空白恰好是这次故障最坑的地方 —— 读的人分不清「正常」「不知道」「没这一项」。
+    // 整段反序列化还有个好处：桥接以后往这段里加字段，这边不用改。
+    private static BridgeSnowLumaStatus? ParseSnowLuma(JsonElement root)
+    {
+        if (!root.TryGetProperty("snowluma", out var element) || element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        try
+        {
+            return element.Deserialize<BridgeSnowLumaStatus>();
+        }
+        catch (JsonException)
+        {
+            // 形状不认识时退到"状态未知"，而不是编一个看起来正常的值出来。
+            return null;
+        }
+    }
+
     // 把桥接状态拼成可读的运行细节。
     private void BuildDetails(ProbeResult bridge)
     {
@@ -541,8 +569,7 @@ public partial class MainWindow : Window
         var lines = new List<string>
         {
             $"桥接模式      : {snapshot.Mode}",
-            $"SnowLuma 连接 : {snapshot.SnowLumaConnected}",
-            $"上游接收健康  : {snapshot.SnowLumaGood}（good=false 通常表示 SnowLuma 的原生注入收不到 QQ 数据）",
+            $"SnowLuma      : {SnowLumaHealthText.Describe(snapshot.SnowLuma)}",
             $"机器人账号    : {snapshot.Account}",
             $"白名单        : 群 {snapshot.AllowGroups} 个 / 私聊 {snapshot.AllowPrivate} 个",
             string.Empty,
@@ -595,12 +622,6 @@ public partial class MainWindow : Window
         return value is { ValueKind: JsonValueKind.String } v ? v.GetString() : null;
     }
 
-    private static bool GetBool(JsonElement root, params string[] path)
-    {
-        var value = Navigate(root, path);
-        return value is { ValueKind: JsonValueKind.True };
-    }
-
     private static JsonElement? Navigate(JsonElement root, params string[] path)
     {
         var current = root;
@@ -626,8 +647,7 @@ public partial class MainWindow : Window
     // 桥接运行状态快照。
     private readonly record struct BridgeSnapshot(
         string Mode,
-        bool SnowLumaConnected,
-        bool SnowLumaGood,
+        BridgeSnowLumaStatus? SnowLuma,
         string Account,
         int AllowGroups,
         int AllowPrivate);

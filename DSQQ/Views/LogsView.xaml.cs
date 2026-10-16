@@ -1,4 +1,5 @@
 using System.Net.Http;
+using DSQQ.Models;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using UserControl = System.Windows.Controls.UserControl;
 using Brush = System.Windows.Media.Brush;
@@ -395,7 +396,7 @@ public partial class LogsView : UserControl
                 ? "  未能读取 /api/status"
                 : $"  模式 {status.Mode} / DSH 就绪 {status.DshReady} / 群 {status.AllowGroups.Count} / 私聊 {status.AllowPrivate.Count}"
                   + Environment.NewLine
-                  + $"  SnowLuma 连接 {status.SnowLuma?.Connected} / 接收健康 {status.SnowLuma?.Good}");
+                  + $"  SnowLuma {SnowLumaHealthText.Describe(status.SnowLuma)}");
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
