@@ -1024,6 +1024,7 @@ public partial class BridgeConsoleView : UserControl
         SocialV2HintText.Text = $"{states.Conversations.Count} 个会话{paused}";
 
         await LoadToolLogAsync();
+        await LoadFeedbackAsync();
     }
 
     // 工具调用日志是排查"她为什么不说话"的第一入口。
@@ -1095,6 +1096,288 @@ public partial class BridgeConsoleView : UserControl
             ? "（读不到记忆）"
             : string.IsNullOrWhiteSpace(memory.Formatted) ? "（她还没有关于这个会话的记忆）" : memory.Formatted;
     }
+
+    // 反馈是 AI 主动上报的问题。它和工具日志放在一起，因为两者都是"运行时留痕"。
+    private async Task LoadFeedbackAsync()
+    {
+        var feedback = await _client.GetSocialV2FeedbackAsync();
+
+        if (feedback is null)
+        {
+            SocialV2FeedbackText.Text = "未能读取反馈。";
+            return;
+        }
+
+        SocialV2FeedbackText.Text = feedback.Entries.Count == 0
+            ? "（暂无反馈）"
+            : string.Join(Environment.NewLine, feedback.Entries.AsEnumerable().Reverse().Select(e => e.Display));
+    }
+
+    private async void OnClearFeedbackClick(object sender, RoutedEventArgs e)
+    {
+        var answer = System.Windows.MessageBox.Show(
+            $"清空 AI 反馈？{Environment.NewLine}{Environment.NewLine}"
+            + "反馈是她主动上报的问题，清掉之后就找不回来了。",
+            "确认清空",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            SocialV2HintText.Text = "已取消。";
+            return;
+        }
+
+        var ok = await _client.ClearSocialV2FeedbackAsync();
+        SocialV2HintText.Text = ok ? "反馈已清空。" : "清空失败。";
+
+        if (ok)
+        {
+            await LoadFeedbackAsync();
+        }
+    }
+
+    // ── 表情库 ──
+
+    // 表情库是唯一一个"打开才值得拉"的分页：它的数据要经 OneBot 取，
+    // 没人看的时候不该产生流量。所以第一次切过去时才加载。
+    private bool _stickersLoaded;
+
+    private async void OnConsoleTabChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // 子控件（列表、下拉框）的选中变化也会冒泡到这里，只认 TabControl 自己的。
+        if (!ReferenceEquals(e.OriginalSource, ConsoleTabs))
+        {
+            return;
+        }
+
+        if (ConsoleTabs.SelectedItem is System.Windows.Controls.TabItem { Header: "表情库" } && !_stickersLoaded)
+        {
+            _stickersLoaded = true;
+            await LoadStickersAsync(null, ReadStickerCount());
+        }
+    }
+
+    // 读取表情库。force=false 读缓存（先看库，再决定要不要花一次同步）。
+    //
+    // justSynced 用来区分两种"库是空的"：一种是还没同步过（该劝用户点同步），
+    // 一种是刚同步完确实是空的（再劝就是死循环了）。
+    private async Task LoadStickersAsync(string? query, int count, bool justSynced = false)
+    {
+        var result = await _client.GetStickersAsync(query, count);
+
+        if (result is null)
+        {
+            StickerHintText.Text = "未能读取表情库（桥接可能未运行）。";
+            return;
+        }
+
+        // 失败时桥接把原因放在 error 里，比"读到 0 条"有用得多。
+        if (!result.Ok)
+        {
+            StickerHintText.Text = $"读取失败：{result.Error ?? "（无原因）"}";
+            return;
+        }
+
+        StickerList.ItemsSource = result.Stickers;
+
+        var trimmed = result.Truncated ? $"，已按上限截断（命中 {result.Matched} 条）" : string.Empty;
+        var cached = result.FromCache ? "，来自缓存" : string.Empty;
+        var synced = result.SyncedAt > 0
+            ? $"，上次同步 {DateTimeOffset.FromUnixTimeMilliseconds(result.SyncedAt).ToLocalTime():MM-dd HH:mm}"
+            : string.Empty;
+
+        StickerHintText.Text = $"库中共 {result.Total} 条，本次显示 {result.Stickers.Count} 条{trimmed}{cached}{synced}。";
+
+        if (result.Total == 0)
+        {
+            StickerHintText.Text += justSynced
+                ? "　同步是成功的，说明这个 QQ 账号里确实没有收藏表情。"
+                : "　点「强制同步」去问 OneBot 要收藏表情。";
+        }
+    }
+
+    private string StickerQueryText() => StickerQueryBox.Text.Trim();
+
+    private async void OnStickerQueryClick(object sender, RoutedEventArgs e)
+    {
+        await LoadStickersAsync(StickerQueryText(), ReadStickerCount());
+    }
+
+    // 强制同步是有副作用的写操作（拉 OneBot 收藏表情并落盘），所以单独一个按钮。
+    //
+    // 判断"这次同步到底成没成"只能靠比较 syncedAt 有没有前进：桥接的
+    // /api/stickers/sync 在**同步失败时也返回 ok:true**（syncStickerLibrary 内部
+    // 把错误 catch 掉并返回 null，接口用缓存兜底），所以 ok 字段说明不了任何事。
+    // 不比对的话，同步失败和"同步成功但一条都没有"在界面上完全一样，
+    // 用户会被反复劝去点那个什么也不会发生的按钮。
+    private async void OnStickerSyncClick(object sender, RoutedEventArgs e)
+    {
+        StickerHintText.Text = "正在同步…";
+
+        var before = await _client.GetStickersAsync(null, 1);
+        var beforeAt = before?.SyncedAt ?? 0;
+
+        var synced = await _client.SyncStickersAsync();
+
+        if (synced is null)
+        {
+            StickerHintText.Text = $"同步失败：{_client.LastError ?? "（无响应）"}";
+            return;
+        }
+
+        if (!synced.Ok)
+        {
+            StickerHintText.Text = $"同步失败：{synced.Error ?? "（无原因）"}";
+            return;
+        }
+
+        if (synced.SyncedAt <= beforeAt)
+        {
+            // 时间戳没有前进 —— 同步没有真的发生。真正的原因在桥接日志里
+            //（搜「[sticker]」），最常见的是 QQ 侧尚未登录，OneBot 的
+            // fetch_custom_face_detail 直接失败了。
+            StickerHintText.Text = "同步没有生效：桥接没能从 OneBot 取到收藏表情。"
+                + "原因记在「日志」页（搜 [sticker]），最常见的是 QQ 侧还没登录。";
+            return;
+        }
+
+        await LoadStickersAsync(StickerQueryText(), ReadStickerCount(), justSynced: true);
+    }
+
+    private void OnStickerSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (StickerList.SelectedItem is not StickerEntry sticker)
+        {
+            return;
+        }
+
+        StickerNoteBox.Text = sticker.LocalNote ?? string.Empty;
+        StickerTagsBox.Text = sticker.TagsText;
+        StickerUsageBox.Text = sticker.Usage ?? string.Empty;
+        StickerRemarkBox.Text = sticker.Desc ?? string.Empty;
+        StickerEditHintText.Text = string.Empty;
+
+        var used = sticker.UseCount > 0
+            ? $"用过 {sticker.UseCount} 次"
+            : "还没用过";
+
+        StickerDetailText.Text =
+            $"匹配标识：{sticker.MatchId}{Environment.NewLine}"
+            + $"来源：{sticker.Source ?? "（未知）"}　{used}";
+    }
+
+    // 保存本地笔记 / 标签 / 用法。这三项只存在桥接这边，写坏了也只影响她选表情。
+    private async void OnSaveStickerNoteClick(object sender, RoutedEventArgs e)
+    {
+        if (StickerList.SelectedItem is not StickerEntry sticker)
+        {
+            StickerEditHintText.Text = "先在左边选一张表情。";
+            return;
+        }
+
+        var id = sticker.MatchId;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            StickerEditHintText.Text = "这条表情没有可用的标识（id/resId/md5/url 都缺失），无法保存。";
+            return;
+        }
+
+        // 标签按空白切分 —— 与右侧输入框的提示一致（"空格分隔"）。
+        var tags = StickerTagsBox.Text
+            .Split([' ', '\t', ',', '，'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var saved = await _client.SaveStickerNoteAsync(
+            id, StickerNoteBox.Text.Trim(), tags, StickerUsageBox.Text.Trim());
+
+        if (saved is null || !saved.Ok)
+        {
+            StickerEditHintText.Text = saved is null
+                ? $"保存失败：{_client.LastError ?? "（无响应）"}"
+                : $"保存失败：{saved.Error ?? "（无原因）"}";
+            return;
+        }
+
+        StickerEditHintText.Text = "已保存。";
+
+        // 就地更新列表里的那一条，而不是整表重刷 —— 重刷会丢掉当前选中项，
+        // 而用户接下来很可能要继续改这一张。
+        if (saved.Sticker is not null)
+        {
+            sticker.LocalNote = saved.Sticker.LocalNote;
+            sticker.Tags = saved.Sticker.Tags;
+            sticker.Usage = saved.Sticker.Usage;
+
+            var items = StickerList.ItemsSource as List<StickerEntry>;
+            var index = items?.IndexOf(sticker) ?? -1;
+            if (items is not null && index >= 0)
+            {
+                // 换掉实例并复位选中，逼 ListBox 用新的 Display 重画这一行。
+                items[index] = sticker;
+                StickerList.ItemsSource = null;
+                StickerList.ItemsSource = items;
+                StickerList.SelectedIndex = index;
+            }
+        }
+    }
+
+    // 改 QQ 备注：这是会写进用户 QQ 账号的操作，比本地笔记"重"，所以先确认。
+    private async void OnSaveStickerRemarkClick(object sender, RoutedEventArgs e)
+    {
+        if (StickerList.SelectedItem is not StickerEntry sticker)
+        {
+            StickerEditHintText.Text = "先在左边选一张表情。";
+            return;
+        }
+
+        var id = sticker.MatchId;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            StickerEditHintText.Text = "这条表情没有可用的标识（id/resId/md5/url 都缺失），无法保存。";
+            return;
+        }
+
+        var remark = StickerRemarkBox.Text.Trim();
+        var answer = System.Windows.MessageBox.Show(
+            $"把 QQ 备注改成「{remark}」？{Environment.NewLine}{Environment.NewLine}"
+            + "这会同步到你的 QQ 账号（不只是 DSQQ 本地），手机上也能看到。",
+            "确认修改 QQ 备注",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            StickerEditHintText.Text = "已取消。";
+            return;
+        }
+
+        var saved = await _client.SaveStickerRemarkAsync(id, remark);
+
+        if (saved is null || !saved.Ok)
+        {
+            StickerEditHintText.Text = saved is null
+                ? $"保存失败：{_client.LastError ?? "（无响应）"}"
+                : $"保存失败：{saved.Error ?? "（无原因）"}";
+            return;
+        }
+
+        sticker.Desc = saved.Sticker?.Desc ?? remark;
+        StickerEditHintText.Text = "QQ 备注已更新。";
+
+        var items = StickerList.ItemsSource as List<StickerEntry>;
+        var index = items?.IndexOf(sticker) ?? -1;
+        if (items is not null && index >= 0)
+        {
+            items[index] = sticker;
+            StickerList.ItemsSource = null;
+            StickerList.ItemsSource = items;
+            StickerList.SelectedIndex = index;
+        }
+    }
+
+    // 数量输入非法时退回默认值，而不是报错打断操作。
+    private int ReadStickerCount()
+        => int.TryParse(StickerCountBox.Text.Trim(), out var n) && n > 0 ? Math.Min(n, 500) : 48;
 
     // ── 上下文重置 ──
 

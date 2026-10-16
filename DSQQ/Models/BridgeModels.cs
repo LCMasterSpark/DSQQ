@@ -1195,9 +1195,59 @@ public sealed class SocialV2FeedbackResponse
     [JsonPropertyName("ok")]
     public bool Ok { get; set; }
 
-    // 条目结构随来源而变，保留原始 JSON。
     [JsonPropertyName("entries")]
-    public List<JsonElement> Entries { get; set; } = [];
+    public List<SocialV2FeedbackEntry> Entries { get; set; } = [];
+}
+
+// AI 主动上报的一条反馈（桥接 appendFeedbackEntry 写入的形状）。
+public sealed class SocialV2FeedbackEntry
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    // info / warning / error
+    [JsonPropertyName("level")]
+    public string? Level { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    // ISO 8601 时间串。
+    [JsonPropertyName("time")]
+    public string? Time { get; set; }
+
+    public string Display
+    {
+        get
+        {
+            // 级别用符号打头，扫一眼就能挑出 error —— 反馈的价值就在于被看见。
+            var mark = Level switch
+            {
+                "error" => "✗",
+                "warning" => "!",
+                _ => "·"
+            };
+
+            var when = DateTimeOffset.TryParse(Time, out var parsed)
+                ? parsed.ToLocalTime().ToString("MM-dd HH:mm")
+                : "（时间无法解析）";
+
+            var who = string.IsNullOrWhiteSpace(Key) ? "（无会话）" : Key!.Trim();
+
+            // 反馈正文可能带换行；列表是一行一条，压平才看得清条数。
+            // 按 \r\n 一起切分并去掉空段，否则 "\r\n" 会留下两个空格。
+            var text = string.IsNullOrWhiteSpace(Message)
+                ? "（无内容）"
+                : string.Join(' ', Message!.Split(
+                    ['\r', '\n'],
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+            return $"{mark} {when}　{who}\n      {text}";
+        }
+    }
 }
 
 // GET /api/socialV2/activity
@@ -1209,4 +1259,134 @@ public sealed class SocialV2ActivityResponse
     // 二代仿真是否被暂停。
     [JsonPropertyName("paused")]
     public bool Paused { get; set; }
+}
+
+// GET /api/stickers —— 管理端表情库（控制台专用，带 agent token 的调用一律 403）。
+// 响应外层是 formatStickerList 的结果：total/matched/truncated + stickers。
+public sealed class StickerListResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    // 库里的总条目数（不受 query 影响）。
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    // 命中 query 的条目数。
+    [JsonPropertyName("matched")]
+    public int Matched { get; set; }
+
+    // 命中数超过本次请求的 count，列表被截断了。
+    [JsonPropertyName("truncated")]
+    public bool Truncated { get; set; }
+
+    [JsonPropertyName("stickers")]
+    public List<StickerEntry> Stickers { get; set; } = [];
+
+    [JsonPropertyName("syncedAt")]
+    public long SyncedAt { get; set; }
+
+    [JsonPropertyName("fromCache")]
+    public bool FromCache { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+}
+
+// 表情库里的一个条目。id / resId / md5 / url 是四种可用的寻址方式，
+// 上游 findStickerEntry 会按 id → resId → md5 → url 顺序匹配。
+public sealed class StickerEntry
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("resId")]
+    public string? ResId { get; set; }
+
+    [JsonPropertyName("md5")]
+    public string? Md5 { get; set; }
+
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
+    // QQ 侧自带的备注（可读可写，写下去会同步到 QQ 账号）。
+    [JsonPropertyName("desc")]
+    public string? Desc { get; set; }
+
+    // 本地笔记：只存在桥接这边，用来记「这张图是什么意思、什么时候用」。
+    [JsonPropertyName("localNote")]
+    public string? LocalNote { get; set; }
+
+    [JsonPropertyName("tags")]
+    public List<string>? Tags { get; set; }
+
+    [JsonPropertyName("usage")]
+    public string? Usage { get; set; }
+
+    [JsonPropertyName("useCount")]
+    public int UseCount { get; set; }
+
+    [JsonPropertyName("lastUsedAt")]
+    public long LastUsedAt { get; set; }
+
+    [JsonPropertyName("source")]
+    public string? Source { get; set; }
+
+    // 保存 / 写回时要用的那个标识：优先 QQ 的表情 id。
+    public string MatchId =>
+        !string.IsNullOrWhiteSpace(Id) ? Id!
+        : !string.IsNullOrWhiteSpace(ResId) ? ResId!
+        : !string.IsNullOrWhiteSpace(Md5) ? Md5!
+        : Url ?? string.Empty;
+
+    // 列表里显示的一行。备注优先取本地笔记（那是我们自己写给自己看的）。
+    public string Display
+    {
+        get
+        {
+            var label = !string.IsNullOrWhiteSpace(LocalNote) ? LocalNote!.Trim()
+                : !string.IsNullOrWhiteSpace(Desc) ? Desc!.Trim()
+                : "（无备注，可先看图）";
+
+            var text = label;
+
+            var tags = Tags?.Where(t => !string.IsNullOrWhiteSpace(t)).ToList() ?? [];
+            if (tags.Count > 0)
+            {
+                text += $"　[{string.Join("/", tags)}]";
+            }
+
+            if (UseCount > 0)
+            {
+                text += $"　用过 {UseCount} 次";
+            }
+
+            // 用法说明可能很长，只给一个开头，完整内容在右侧编辑框里。
+            if (!string.IsNullOrWhiteSpace(Usage))
+            {
+                var usage = Usage!.Replace("\r", " ").Replace("\n", " ").Trim();
+                text += $"　· {usage[..Math.Min(24, usage.Length)]}{(usage.Length > 24 ? "…" : string.Empty)}";
+            }
+
+            return text;
+        }
+    }
+
+    // 右侧编辑区用的标签串（空格分隔，人写起来比逗号顺手）。
+    public string TagsText => Tags is { Count: > 0 } ? string.Join(" ", Tags) : string.Empty;
+}
+
+// POST /api/stickers/note 与 POST /api/stickers/remark 的响应。
+public sealed class StickerSaveResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    // 保存后的条目（桥接会把整条回给调用方）。
+    [JsonPropertyName("sticker")]
+    public StickerEntry? Sticker { get; set; }
+
+    // 失败原因，例如「找不到表情 xxx」。
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
 }

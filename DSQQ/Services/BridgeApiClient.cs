@@ -377,6 +377,59 @@ public sealed class BridgeApiClient : IDisposable
     public Task<SocialV2FeedbackResponse?> GetSocialV2FeedbackAsync(CancellationToken cancellationToken = default)
         => GetAsync<SocialV2FeedbackResponse>("/api/socialV2/feedback", cancellationToken);
 
+    // 清空反馈条目。该接口只允许控制台调用（带 agent token 会被 403）。
+    public Task<bool> ClearSocialV2FeedbackAsync(CancellationToken cancellationToken = default)
+        => PostAsync("/api/socialV2/feedback-clear", new { }, cancellationToken);
+
+    // 读取表情库。query 会匹配备注 / 本地笔记 / 标签 / 用法 / id / md5。
+    //
+    // 注意：GET 不再触发强制同步（拉 OneBot 收藏表情是有副作用的写操作，
+    // 挂在读接口上会绕开 CSRF 防护）；要同步请用 SyncStickersAsync。
+    public Task<StickerListResponse?> GetStickersAsync(
+        string? query = null, int count = 48, CancellationToken cancellationToken = default)
+    {
+        var path = $"/api/stickers?count={count}";
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            path += $"&query={Uri.EscapeDataString(query)}";
+        }
+
+        return GetAsync<StickerListResponse>(path, cancellationToken);
+    }
+
+    // 强制同步表情库（会去问 OneBot 要收藏表情并落盘）。
+    // 响应只有 {ok, total, syncedAt}，没有列表 —— 同步完要再拉一次列表。
+    public Task<StickerListResponse?> SyncStickersAsync(CancellationToken cancellationToken = default)
+        => PostForResultAsync<StickerListResponse>("/api/stickers/sync", new { }, cancellationToken);
+
+    // 写本地笔记 / 标签 / 用法。这三个字段只存在桥接这边，不影响 QQ。
+    public Task<StickerSaveResponse?> SaveStickerNoteAsync(
+        string stickerId, string? note, IEnumerable<string>? tags, string? usage,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stickerId);
+
+        var payload = new
+        {
+            stickerId,
+            note = note ?? string.Empty,
+            tags = tags?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToList() ?? [],
+            usage = usage ?? string.Empty
+        };
+
+        return PostForResultAsync<StickerSaveResponse>("/api/stickers/note", payload, cancellationToken);
+    }
+
+    // 改 QQ 侧的表情备注。这是会同步到 QQ 账号的写操作，比本地笔记"重"。
+    public Task<StickerSaveResponse?> SaveStickerRemarkAsync(
+        string stickerId, string remark, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stickerId);
+
+        return PostForResultAsync<StickerSaveResponse>(
+            "/api/stickers/remark", new { stickerId, remark = remark ?? string.Empty }, cancellationToken);
+    }
+
     // 读取挂起审批 / 提问。
     // 只读 —— 应答由 QQ 消息完成（管理员在对应会话回复"通过/拒绝"或答案）。
     public Task<PendingResponse?> GetPendingAsync(CancellationToken cancellationToken = default)
@@ -495,6 +548,48 @@ public sealed class BridgeApiClient : IDisposable
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
         {
             return false;
+        }
+    }
+
+    // POST JSON 并解析响应体。
+    //
+    // 与 PostAsync 的区别在于**失败也要读响应体**：桥接把失败原因放在 error 字段里
+    // （例如"找不到表情 xxx"），只看状态码的话用户只能看到一句"失败了"，
+    // 而那是排查时唯一有用的信息。所以这里不因为非 2xx 就提前返回。
+    private async Task<T?> PostForResultAsync<T>(string path, object payload, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _http
+                .PostAsJsonAsync(path, payload, JsonOptions, cancellationToken)
+                .ConfigureAwait(false);
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                LastError = response.IsSuccessStatusCode
+                    ? $"{path} 返回空响应"
+                    : $"{path} 返回 HTTP {(int)response.StatusCode}（无响应体）";
+                return default;
+            }
+
+            // 解析失败时把原始文本留下 —— 至少能看出服务端返回了什么。
+            try
+            {
+                return JsonSerializer.Deserialize<T>(json, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                LastError = $"{path} 的响应无法解析：{json[..Math.Min(200, json.Length)]}";
+                return default;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        {
+            LastError = ex is TaskCanceledException or OperationCanceledException
+                ? $"{path} 请求超时（{_http.Timeout.TotalSeconds:0} 秒）"
+                : $"{path} 连接失败：{ex.Message}";
+            return default;
         }
     }
 

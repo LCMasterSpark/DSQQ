@@ -27,7 +27,8 @@
             </StackPanel>
         </Border>
 
-        <TabControl Grid.Row="1" Margin="0,12,0,0">
+        <TabControl x:Name="ConsoleTabs" Grid.Row="1" Margin="0,12,0,0"
+                    SelectionChanged="OnConsoleTabChanged">
             <!-- ══ 总览 ══ -->
             <TabItem Header="总览">
                 <Grid Margin="12">
@@ -724,6 +725,8 @@
                                 Click="OnRefreshSocialV2Click" />
                         <Button x:Name="ClearToolLogButton" Content="清空工具日志" Width="110" Height="28"
                                 Margin="8,0,0,0" Click="OnClearToolLogClick" />
+                        <Button x:Name="ClearFeedbackButton" Content="清空反馈" Width="90" Height="28"
+                                Margin="8,0,0,0" Click="OnClearFeedbackClick" />
                         <TextBlock x:Name="SocialV2HintText" Margin="16,0,0,0" VerticalAlignment="Center"
                                    Opacity="0.7" TextWrapping="Wrap" />
                     </StackPanel>
@@ -740,6 +743,7 @@
 
                     <Grid Grid.Row="2" Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
@@ -769,7 +773,7 @@
                             </DockPanel>
                         </Border>
 
-                        <Border Grid.Column="2" Margin="6,0,0,0" Padding="10" CornerRadius="4"
+                        <Border Grid.Column="2" Margin="6,0" Padding="10" CornerRadius="4"
                                 Background="{DynamicResource DsqqSurface}">
                             <DockPanel>
                                 <TextBlock DockPanel.Dock="Top" Text="工具调用日志" FontWeight="SemiBold" />
@@ -777,6 +781,107 @@
                                     <TextBlock x:Name="SocialV2ToolLogText" TextWrapping="Wrap"
                                                FontFamily="Consolas, Microsoft YaHei UI" LineHeight="18"
                                                Text="（未采集）" />
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+
+                        <Border Grid.Column="3" Margin="6,0,0,0" Padding="10" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="AI 反馈" FontWeight="SemiBold" />
+                                <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="SocialV2FeedbackText" TextWrapping="Wrap"
+                                               FontFamily="Consolas, Microsoft YaHei UI" LineHeight="18"
+                                               Text="（未采集）" />
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="表情库">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <TextBlock Text="搜索" VerticalAlignment="Center" />
+                        <TextBox x:Name="StickerQueryBox" Width="220" Height="28" Margin="8,0,0,0"
+                                 VerticalContentAlignment="Center"
+                                 ToolTip="匹配备注、本地笔记、标签、用法、id、md5" />
+                        <TextBlock Text="最多" VerticalAlignment="Center" Margin="14,0,0,0" />
+                        <TextBox x:Name="StickerCountBox" Width="60" Height="28" Margin="6,0,0,0"
+                                 VerticalContentAlignment="Center" Text="48" />
+                        <Button x:Name="StickerQueryButton" Content="查询" Width="70" Height="28"
+                                Margin="10,0,0,0" Click="OnStickerQueryClick" />
+                        <Button x:Name="StickerSyncButton" Content="强制同步" Width="90" Height="28"
+                                Margin="8,0,0,0" Click="OnStickerSyncClick"
+                                ToolTip="去问 OneBot 要最新收藏表情并落盘；平时用查询即可，它读缓存" />
+                        <TextBlock x:Name="StickerHintText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                   Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1" x:Name="StickerNoteText" Margin="0,10,0,0" Opacity="0.6"
+                               TextWrapping="Wrap"
+                               Text="本地笔记与标签只存在桥接这边，用来记「这张图是什么意思、什么时候用」；QQ 备注会同步到你的 QQ 账号。二者都会进入她选表情时的参考。" />
+
+                    <Grid Grid.Row="2" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.3*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Margin="0,0,6,0" Padding="10" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="表情（选中后右侧编辑）" FontWeight="SemiBold" />
+                                <ListBox x:Name="StickerList" Margin="0,8,0,0"
+                                         DisplayMemberPath="Display"
+                                         SelectionChanged="OnStickerSelectionChanged" />
+                            </DockPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Margin="6,0,0,0" Padding="10" CornerRadius="4"
+                                Background="{DynamicResource DsqqSurface}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="编辑" FontWeight="SemiBold" />
+                                <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <TextBlock x:Name="StickerDetailText" TextWrapping="Wrap" Opacity="0.7"
+                                                   Text="（未选中）" />
+
+                                        <TextBlock Text="本地笔记" Margin="0,12,0,4" FontWeight="SemiBold" />
+                                        <TextBox x:Name="StickerNoteBox" Height="60" TextWrapping="Wrap"
+                                                 AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
+
+                                        <TextBlock Text="标签（空格分隔）" Margin="0,10,0,4" FontWeight="SemiBold" />
+                                        <TextBox x:Name="StickerTagsBox" Height="28"
+                                                 VerticalContentAlignment="Center" />
+
+                                        <TextBlock Text="用法说明" Margin="0,10,0,4" FontWeight="SemiBold" />
+                                        <TextBox x:Name="StickerUsageBox" Height="60" TextWrapping="Wrap"
+                                                 AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
+
+                                        <Button x:Name="SaveStickerNoteButton" Content="保存笔记"
+                                                Width="100" Height="30" Margin="0,10,0,0"
+                                                HorizontalAlignment="Left" Click="OnSaveStickerNoteClick" />
+
+                                        <Separator Margin="0,14,0,10" />
+
+                                        <TextBlock Text="QQ 备注" Margin="0,0,0,4" FontWeight="SemiBold" />
+                                        <TextBox x:Name="StickerRemarkBox" Height="28"
+                                                 VerticalContentAlignment="Center" />
+                                        <Button x:Name="SaveStickerRemarkButton" Content="保存到 QQ"
+                                                Width="100" Height="30" Margin="0,10,0,0"
+                                                HorizontalAlignment="Left" Click="OnSaveStickerRemarkClick" />
+
+                                        <TextBlock x:Name="StickerEditHintText" Margin="0,10,0,0"
+                                                   TextWrapping="Wrap" Opacity="0.7" />
+                                    </StackPanel>
                                 </ScrollViewer>
                             </DockPanel>
                         </Border>
